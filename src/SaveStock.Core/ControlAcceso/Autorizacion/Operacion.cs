@@ -29,4 +29,11 @@ public enum Operacion
     RestablecerContrasena,
     CambiarContrasena,
     ForzarRestablecimiento,
+
+    // Gestión de permisos (#40)
+    CrearSolicitudPermiso,
+    ConsultarMisSolicitudesPermiso,
+    ConsultarSolicitudesPendientes,
+    AprobarSolicitudPermiso,
+    RechazarSolicitudPermiso,
 }
