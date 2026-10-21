@@ -1,6 +1,7 @@
 using SaveStock.Core.ControlAcceso.Autorizacion;
 using SaveStock.Core.ControlAcceso.Entidades;
 using SaveStock.Core.ControlAcceso.Sesiones;
+using SaveStock.Core.GestionPermisos;
 using SaveStock.Web.Errores;
 
 namespace SaveStock.Web.Filtros;
@@ -31,6 +32,7 @@ public class FiltroOperacion : IEndpointFilter
     {
         var http = contexto.HttpContext;
         Usuario? usuario = null;
+        IReadOnlyCollection<PermisoSolicitable> permisosOtorgados = [];
 
         // Las operaciones públicas no necesitan sesión; las demás la validan con GestorSesiones.
         if (Permisos.NivelDe(_operacion) != NivelAcceso.Publico)
@@ -42,11 +44,15 @@ public class FiltroOperacion : IEndpointFilter
             {
                 usuario = sesion.Usuario;
                 UsuarioActual.Guardar(http, sesion, token!);
+
+                // Los permisos que recibió por una solicitud aprobada también cuentan (RF-GP-05).
+                var gestionPermisos = http.RequestServices.GetRequiredService<ServicioGestionPermisos>();
+                permisosOtorgados = await gestionPermisos.ListarPermisosOtorgadosAsync(usuario.Id);
             }
         }
 
-        // Permisos/Autorizador deciden: 401 sin sesión válida, 403 si el rol no alcanza.
-        var autorizacion = Autorizador.Autorizar(_operacion, usuario);
+        // Permisos/Autorizador deciden: 401 sin sesión válida, 403 si ni el rol ni un permiso otorgado alcanzan.
+        var autorizacion = Autorizador.Autorizar(_operacion, usuario, permisosOtorgados);
         if (!autorizacion.Exito)
         {
             return ResultadoHttp.Error(autorizacion);

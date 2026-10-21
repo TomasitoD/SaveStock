@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SaveStock.Core.ControlAcceso.Entidades;
 using SaveStock.Core.Correo;
+using SaveStock.Core.GestionPermisos;
 
 namespace SaveStock.Core.Datos;
 
@@ -23,6 +24,10 @@ public class CoreDbContext : DbContext
     public DbSet<CodigoRecuperacion> CodigosRecuperacion => Set<CodigoRecuperacion>();
 
     public DbSet<CorreoEnCola> CorreosEnCola => Set<CorreoEnCola>();
+
+    public DbSet<SolicitudPermiso> SolicitudesPermiso => Set<SolicitudPermiso>();
+
+    public DbSet<PermisoOtorgado> PermisosOtorgados => Set<PermisoOtorgado>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -71,6 +76,24 @@ public class CoreDbContext : DbContext
             correo.Property(c => c.Estado).HasConversion<string>().HasMaxLength(20);
             correo.Property(c => c.UltimoError).HasMaxLength(500);
             correo.HasIndex(c => c.Estado);
+        });
+
+        modelBuilder.Entity<SolicitudPermiso>(solicitud =>
+        {
+            solicitud.Property(s => s.Permiso).HasConversion<string>().HasMaxLength(50);
+            solicitud.Property(s => s.Estado).HasConversion<string>().HasMaxLength(20);
+            solicitud.Property(s => s.MotivoRechazo).HasMaxLength(SolicitudPermiso.LargoMaximoMotivo);
+            solicitud.HasOne(s => s.Solicitante).WithMany().HasForeignKey(s => s.SolicitanteId);
+            solicitud.HasOne(s => s.Aprobador).WithMany().HasForeignKey(s => s.AprobadorId);
+            solicitud.HasIndex(s => s.Estado);
+        });
+
+        modelBuilder.Entity<PermisoOtorgado>(permiso =>
+        {
+            permiso.Property(p => p.Permiso).HasConversion<string>().HasMaxLength(50);
+            permiso.HasOne(p => p.Usuario).WithMany().HasForeignKey(p => p.UsuarioId);
+            permiso.HasOne(p => p.Solicitud).WithMany().HasForeignKey(p => p.SolicitudId);
+            permiso.HasIndex(p => new { p.UsuarioId, p.Permiso }).IsUnique(); // Cada permiso, una sola vez.
         });
     }
 }

@@ -53,6 +53,7 @@ app.MapRegistroEndpoints();
 app.MapSesionEndpoints();
 app.MapAdministracionEndpoints();
 app.MapContrasenasEndpoints();
+app.MapGestionPermisosEndpoints();
 
 app.Run();
 

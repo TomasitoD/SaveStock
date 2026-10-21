@@ -8,6 +8,7 @@ using SaveStock.Core.ControlAcceso.Registro;
 using SaveStock.Core.ControlAcceso.Sesiones;
 using SaveStock.Core.Correo;
 using SaveStock.Core.Datos;
+using SaveStock.Core.GestionPermisos;
 
 namespace SaveStock.Core;
 
@@ -37,6 +38,7 @@ public static class ServiciosCore
         services.AddAdministracion();
         services.AddContrasenas();
         services.AddCorreo();
+        services.AddGestionPermisos();
 
         return services;
     }
