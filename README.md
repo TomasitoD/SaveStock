@@ -6,6 +6,11 @@ por intentos, roles y administración de usuarios, recuperación y cambio de con
 correos con su enviador aparte), y deja declarada la **estructura de la máquina de estados** de la orden
 de compra, la entidad central del inventario.
 
+La **Asignación 2** agrega la segunda pieza del Core, la **gestión de permisos**: un usuario Estándar
+pide un permiso que su rol no le da, un Administrador lo aprueba o lo rechaza con un motivo, y al
+aprobarlo el sistema lo aplica solo. Se verifica en la [sección 8](#8-gestión-de-permisos-rf-gp-01-a-rf-gp-07-rd-04-rd-06-rd-07-rd-09)
+y sus pruebas se ejecutan como dice [Pruebas](#pruebas).
+
 Todos los comandos de este README se ejecutan **desde la raíz del repositorio**.
 
 ## Requisitos
@@ -23,7 +28,7 @@ Los comandos están escritos para bash o zsh (macOS, Linux, o Git Bash / WSL en 
 ```bash
 git clone https://github.com/TomasitoD/SaveStock.git
 cd SaveStock
-git checkout practica-1
+git checkout asignacion-2
 dotnet restore
 ```
 
@@ -111,19 +116,33 @@ Además de la API, la web tiene páginas para usar el sistema desde el navegador
 | `/perfil` | Ver mis datos, cerrar sesión y cambiar mi contraseña |
 | `/contrasena/recuperar` | Pedir un código de recuperación |
 | `/contrasena/restablecer` | Definir una contraseña nueva con el código |
-| `/admin/usuarios` | Administración de usuarios (solo Administrador) |
+| `/admin/usuarios` | Administración de usuarios (solo Administrador; la tabla también la ve quien tiene aprobado el permiso `VerListadoUsuarios`) |
 
 Las verificaciones de abajo usan la API con `curl`: así se ve el código HTTP exacto y la petición se
 construye a mano, sin pasar por la interfaz (RD-06). Las páginas usan los mismos servicios del Core, con
 las mismas reglas.
 
-## Pruebas automáticas
+## Pruebas
+
+Un solo comando, desde la raíz de un clon limpio, compila y ejecuta toda la suite:
 
 ```bash
 dotnet test
 ```
 
-Hay pruebas unitarias de los servicios del Core que no levantan la web (RD-12) y pruebas de integración
+Las pruebas de **Gestión de permisos** están en `tests/SaveStock.Tests/Unitarias/GestionPermisos/`:
+`MaquinaEstadosSolicitudPermisoTests.cs` (transiciones válidas con el dato que registran y transiciones
+prohibidas que dejan el estado igual) y `ServicioGestionPermisosTests.cs` (crear, listar, aprobar,
+rechazar, RF-GP-07, la aplicación automática del permiso y la persistencia). No levantan la web: usan
+una base SQLite en memoria y un reloj falso (RD-12), y cada prueba crea su propia base, así que pasan
+en cualquier orden y por separado. Cada una tiene sus fases `// Preparar`, `// Actuar` y `// Verificar`,
+y cita su requisito con `[Trait("Requisito", "RF-GP-..")]`. Para correr solo esas:
+
+```bash
+dotnet test --filter "FullyQualifiedName~GestionPermisos"
+```
+
+Además hay pruebas unitarias de los servicios del Core que no levantan la web (RD-12) y pruebas de integración
 que levantan la API en memoria con una base SQLite temporal. Cubren también lo que no se puede provocar
 a mano en pocos minutos: el vencimiento del bloqueo (15 minutos), del código de recuperación
 (15 minutos) y del enlace de activación (24 horas).
@@ -697,6 +716,198 @@ La tabla de transiciones (desde, hacia, quién la ejecuta, condición) está en
 sqlite3 datos/inventario.db ".schema OrdenesDeCompra"
 ```
 
+### 8. Gestión de permisos (RF-GP-01 a RF-GP-07, RD-04, RD-06, RD-07, RD-09)
+
+Un usuario Estándar pide el permiso `VerListadoUsuarios` (ver `GET /api/admin/usuarios`, que por rol
+es solo de Administrador) y un Administrador lo aprueba o lo rechaza. La tabla de estados y
+transiciones, los endpoints y todos los mensajes de error están en
+[`docs/gestion-de-permisos.md`](docs/gestion-de-permisos.md):
+
+| Desde | Hacia | Quién la ejecuta | Condición |
+|---|---|---|---|
+| Pendiente | Aprobada | Administrador | La solicitud está en Pendiente. |
+| Aprobada | Aplicada | El sistema | Automática, inmediatamente después de aprobar. |
+| Pendiente | Rechazada | Administrador | Exige un motivo escrito. |
+| Cualquier otra combinación | — | — | Prohibida. El sistema la rechaza y el estado no cambia. |
+
+Las transiciones se resuelven en un solo punto, `src/SaveStock.Core/GestionPermisos/MaquinaEstadosSolicitudPermiso.cs`
+(RD-04): es el único código que cambia el estado de una solicitud.
+
+> **Si ya habías ejecutado una versión anterior**, detén la web y borra la carpeta `datos/` antes de
+> arrancarla (`rm -rf datos`). La base se crea con `EnsureCreated`, que no agrega tablas nuevas
+> (`SolicitudesPermiso`, `PermisosOtorgados`) a un archivo que ya existe. En un clon limpio no hace falta.
+
+Esta sección es independiente de las anteriores: solo necesita la web corriendo y las variables
+`API`, `ADMIN_CORREO`, `ADMIN_CONTRASENA` y `CONTRASENA` de la [Preparación](#preparación).
+
+**8.1 Preparar dos usuarios Estándar y el Administrador.** Sofía y Tito usan `example.com`, así que su
+enlace de activación se lee de la cola:
+
+```bash
+for NOMBRE in sofia tito; do
+  curl -s -o /dev/null -X POST "$API/api/cuentas/registro" -H 'Content-Type: application/json' \
+    -d "{\"nombre\":\"$NOMBRE\",\"correo\":\"$NOMBRE@example.com\",\"contrasena\":\"$CONTRASENA\"}"
+  ENLACE=$(sqlite3 datos/savestock.db "select Cuerpo from CorreosEnCola where Destinatario='$NOMBRE@example.com' order by Id desc limit 1;" | grep -o 'http[^ ]*activar?token=[A-Za-z0-9_-]*')
+  curl -s -o /dev/null "$ENLACE"
+done
+SOFIA=$(curl -s -X POST "$API/api/sesion/iniciar" -H 'Content-Type: application/json' \
+  -d "{\"correo\":\"sofia@example.com\",\"contrasena\":\"$CONTRASENA\"}" | jq -r .token)
+TITO=$(curl -s -X POST "$API/api/sesion/iniciar" -H 'Content-Type: application/json' \
+  -d "{\"correo\":\"tito@example.com\",\"contrasena\":\"$CONTRASENA\"}" | jq -r .token)
+ADMIN=$(curl -s -X POST "$API/api/sesion/iniciar" -H 'Content-Type: application/json' \
+  -d "{\"correo\":\"$ADMIN_CORREO\",\"contrasena\":\"$ADMIN_CONTRASENA\"}" | jq -r .token)
+echo "$SOFIA $TITO $ADMIN"
+```
+
+Se imprimen tres tokens. Los ids y nombres de las respuestas de abajo son los de una base recién
+creada con el administrador `Admin` (id 1); en la tuya pueden ser otros.
+
+**8.2 Crear una solicitud: nace en Pendiente (RF-GP-01, RD-07).** Antes, Sofía no puede listar usuarios:
+
+```bash
+curl -s -w ' -> %{http_code}\n' "$API/api/admin/usuarios" -H "Authorization: Bearer $SOFIA"
+SOLICITUD=$(curl -s -X POST "$API/api/permisos/solicitudes" -H "Authorization: Bearer $SOFIA" \
+  -H 'Content-Type: application/json' -d '{"permiso":"VerListadoUsuarios"}' | tee /dev/stderr | jq .id)
+echo; echo "$SOLICITUD"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes" -H "Authorization: Bearer $SOFIA" \
+  -H 'Content-Type: application/json' -d '{"permiso":"VerListadoUsuarios"}'
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes" -H "Authorization: Bearer $SOFIA" \
+  -H 'Content-Type: application/json' -d '{"permiso":"SerAdministrador"}'
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes" -H "Authorization: Bearer $SOFIA" \
+  -H 'Content-Type: application/json' -d '{"permiso":'
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes" \
+  -H 'Content-Type: application/json' -d '{"permiso":"VerListadoUsuarios"}'
+```
+
+| Caso | Respuesta |
+|---|---|
+| Sofía lista usuarios antes de pedir el permiso | `{"mensaje":"No tienes permiso para realizar esta operación."} -> 403` |
+| Crear la solicitud | `{"id":1,"solicitante":{"id":2,"nombre":"sofia"},"permiso":"VerListadoUsuarios","estado":"Pendiente","aprobador":null,...}` y el id |
+| Pedir lo mismo otra vez | `{"mensaje":"Ya tienes una solicitud pendiente para ese permiso."} -> 409` |
+| Un permiso que no existe | `{"mensaje":"El permiso solicitado no existe. Permisos válidos: VerListadoUsuarios."} -> 400` |
+| JSON mal formado | `{"mensaje":"La solicitud no es válida."} -> 400` |
+| Sin sesión | `{"mensaje":"Necesitas iniciar sesión."} -> 401` |
+
+**8.3 Un Estándar no ve las solicitudes de otros (RF-GP-02, RD-06).**
+
+```bash
+curl -s -w ' -> %{http_code}\n' "$API/api/permisos/solicitudes/mias" -H "Authorization: Bearer $TITO"
+curl -s -w ' -> %{http_code}\n' "$API/api/permisos/solicitudes/pendientes" -H "Authorization: Bearer $TITO"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes/$SOLICITUD/aprobar" -H "Authorization: Bearer $TITO"
+curl -s -w ' -> %{http_code}\n' "$API/api/permisos/solicitudes/mias" -H "Authorization: Bearer $SOFIA"
+```
+
+| Caso | Respuesta |
+|---|---|
+| Las solicitudes de Tito | `[] -> 200`: la de Sofía no aparece |
+| Tito pide las pendientes de todos | `{"mensaje":"No tienes permiso para realizar esta operación."} -> 403` |
+| Tito intenta aprobar | `{"mensaje":"No tienes permiso para realizar esta operación."} -> 403` |
+| Las solicitudes de Sofía | `[{"id":1,...,"estado":"Pendiente",...}] -> 200`: solo la suya |
+
+**8.4 El Administrador consulta las pendientes (RF-GP-02).**
+
+```bash
+curl -s -w ' -> %{http_code}\n' "$API/api/permisos/solicitudes/pendientes" -H "Authorization: Bearer $ADMIN"
+```
+
+`[{"id":1,"solicitante":{"id":2,"nombre":"sofia"},"permiso":"VerListadoUsuarios","estado":"Pendiente",...}] -> 200`.
+
+**8.5 Aprobar: queda registrado quién y cuándo (RF-GP-03), y el permiso se aplica solo (RF-GP-05).**
+
+```bash
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes/$SOLICITUD/aprobar" -H "Authorization: Bearer $ADMIN"
+curl -s -w ' -> %{http_code}\n' "$API/api/admin/usuarios" -H "Authorization: Bearer $SOFIA"
+curl -s -w ' -> %{http_code}\n' "$API/api/admin/usuarios" -H "Authorization: Bearer $TITO"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/admin/usuarios/1/desactivar" -H "Authorization: Bearer $SOFIA"
+sqlite3 datos/savestock.db "select Id, SolicitanteId, Permiso, Estado, AprobadorId, FechaResolucion, FechaAplicacion from SolicitudesPermiso;"
+sqlite3 datos/savestock.db "select UsuarioId, Permiso, SolicitudId, FechaOtorgamiento from PermisosOtorgados;"
+```
+
+| Caso | Respuesta |
+|---|---|
+| Aprobar | `{"id":1,...,"estado":"Aplicada","aprobador":{"id":1,"nombre":"Admin"},...,"fechaResolucion":"2026-...Z",...,"fechaAplicacion":"2026-...Z"} -> 200` |
+| Sofía lista usuarios **sin volver a iniciar sesión** | `[{"id":1,"nombre":"Admin",...}, ...] -> 200` (antes era `403`) |
+| Tito, que no pidió nada, lista usuarios | `-> 403` |
+| Sofía intenta otra operación de Administrador | `-> 403`: el permiso habilita solo el listado |
+| La base | `1\|2\|VerListadoUsuarios\|Aplicada\|1\|<fecha>\|<fecha>` y `2\|VerListadoUsuarios\|1\|<fecha>` |
+
+**8.6 Aprobar dos veces se rechaza y el estado no cambia (RF-GP-06).**
+
+```bash
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes/$SOLICITUD/aprobar" -H "Authorization: Bearer $ADMIN"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes/$SOLICITUD/rechazar" -H "Authorization: Bearer $ADMIN" \
+  -H 'Content-Type: application/json' -d '{"motivo":"Ya no lo necesita."}'
+sqlite3 datos/savestock.db "select Id, Estado, AprobadorId, FechaResolucion, MotivoRechazo from SolicitudesPermiso where Id=$SOLICITUD;"
+```
+
+`{"mensaje":"La solicitud está en estado Aplicada y no se puede aprobar."} -> 409`, después
+`{"mensaje":"La solicitud está en estado Aplicada y no se puede rechazar."} -> 409`, y la base sigue
+igual que en 8.5: `Aplicada`, el mismo aprobador, la misma fecha y sin motivo.
+
+**8.7 Rechazar sin motivo no se completa; con motivo, sí (RF-GP-04).** Tito crea su solicitud:
+
+```bash
+SOLICITUD_TITO=$(curl -s -X POST "$API/api/permisos/solicitudes" -H "Authorization: Bearer $TITO" \
+  -H 'Content-Type: application/json' -d '{"permiso":"VerListadoUsuarios"}' | jq .id)
+echo "$SOLICITUD_TITO"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes/$SOLICITUD_TITO/rechazar" -H "Authorization: Bearer $ADMIN"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes/$SOLICITUD_TITO/rechazar" -H "Authorization: Bearer $ADMIN" \
+  -H 'Content-Type: application/json' -d '{"motivo":"   "}'
+sqlite3 datos/savestock.db "select Id, Estado, AprobadorId, MotivoRechazo from SolicitudesPermiso where Id=$SOLICITUD_TITO;"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes/$SOLICITUD_TITO/rechazar" -H "Authorization: Bearer $ADMIN" \
+  -H 'Content-Type: application/json' -d '{"motivo":"Su puesto no necesita ver a los usuarios."}'
+```
+
+| Caso | Respuesta |
+|---|---|
+| Rechazar sin cuerpo | `{"mensaje":"El rechazo necesita un motivo escrito."} -> 400` |
+| Rechazar con un motivo en blanco | `{"mensaje":"El rechazo necesita un motivo escrito."} -> 400` |
+| La base | `2\|Pendiente\|\|`: sigue Pendiente, sin aprobador ni motivo |
+| Rechazar con motivo | `{"id":2,...,"estado":"Rechazada","aprobador":{"id":1,"nombre":"Admin"},...,"motivoRechazo":"Su puesto no necesita ver a los usuarios.",...} -> 200` |
+
+**8.8 De Rechazada no se puede aprobar ni aplicar (RF-GP-06).**
+
+```bash
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes/$SOLICITUD_TITO/aprobar" -H "Authorization: Bearer $ADMIN"
+sqlite3 datos/savestock.db "select Id, Estado, FechaAplicacion from SolicitudesPermiso where Id=$SOLICITUD_TITO;"
+curl -s -w ' -> %{http_code}\n' "$API/api/admin/usuarios" -H "Authorization: Bearer $TITO"
+```
+
+`{"mensaje":"La solicitud está en estado Rechazada y no se puede aprobar."} -> 409`, la base sigue en
+`2|Rechazada|` (nunca se aplicó) y Tito sigue recibiendo `403` en el listado.
+
+**8.9 Nadie resuelve su propia solicitud (RF-GP-07).** El Administrador crea una solicitud propia e
+intenta resolverla:
+
+```bash
+SOLICITUD_ADMIN=$(curl -s -X POST "$API/api/permisos/solicitudes" -H "Authorization: Bearer $ADMIN" \
+  -H 'Content-Type: application/json' -d '{"permiso":"VerListadoUsuarios"}' | jq .id)
+echo "$SOLICITUD_ADMIN"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes/$SOLICITUD_ADMIN/aprobar" -H "Authorization: Bearer $ADMIN"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes/$SOLICITUD_ADMIN/rechazar" -H "Authorization: Bearer $ADMIN" \
+  -H 'Content-Type: application/json' -d '{"motivo":"Me la rechazo yo."}'
+sqlite3 datos/savestock.db "select Id, Estado, AprobadorId from SolicitudesPermiso where Id=$SOLICITUD_ADMIN;"
+```
+
+Las dos: `{"mensaje":"No puedes resolver tu propia solicitud."} -> 403`, y la solicitud sigue
+`Pendiente` y sin aprobador (`3|Pendiente|`). Un id que no existe da
+`{"mensaje":"No existe una solicitud de permiso con ese id."} -> 404`.
+
+**8.10 Las solicitudes sobreviven a reiniciar (RD-09).** Detén la web con `Ctrl+C`, vuelve a arrancarla
+con `dotnet run --project src/SaveStock.Web` y repite:
+
+```bash
+SOFIA=$(curl -s -X POST "$API/api/sesion/iniciar" -H 'Content-Type: application/json' \
+  -d "{\"correo\":\"sofia@example.com\",\"contrasena\":\"$CONTRASENA\"}" | jq -r .token)
+curl -s -w ' -> %{http_code}\n' "$API/api/permisos/solicitudes/mias" -H "Authorization: Bearer $SOFIA"
+curl -s -o /dev/null -w '%{http_code}\n' "$API/api/admin/usuarios" -H "Authorization: Bearer $SOFIA"
+sqlite3 datos/savestock.db "select Id, SolicitanteId, Permiso, Estado, AprobadorId, MotivoRechazo from SolicitudesPermiso;"
+```
+
+La solicitud de Sofía sigue `Aplicada` con su aprobador y sus fechas, Sofía sigue pudiendo listar
+usuarios (`200`) y la base muestra las tres solicitudes: `Aplicada`, `Rechazada` con su motivo y
+`Pendiente`. Viven en `datos/savestock.db`, fuera del proceso.
+
 ## Dónde está cada cosa
 
 | Requisito | Archivo |
@@ -718,7 +929,11 @@ sqlite3 datos/inventario.db ".schema OrdenesDeCompra"
 | RD-08 (errores sin detalles internos) | `src/SaveStock.Web/Errores/ManejoErrores.cs` |
 | RD-09 (persistencia en SQLite) | `src/SaveStock.Core/Datos/CoreDbContext.cs` |
 | RD-11 (fechas en UTC con un solo reloj) | `src/SaveStock.Core/Comun/IReloj.cs` |
-| RD-12 (pruebas sin levantar la aplicación) | `tests/SaveStock.Tests/Unitarias/` |
+| RF-GP-01 a RF-GP-04, RF-GP-07 (crear, consultar, aprobar, rechazar, nadie resuelve la suya) | `src/SaveStock.Core/GestionPermisos/ServicioGestionPermisos.cs` |
+| **RF-GP-06, RD-04 (transiciones de la solicitud, en un solo punto)** | **`src/SaveStock.Core/GestionPermisos/MaquinaEstadosSolicitudPermiso.cs`** |
+| RF-GP-05 (el permiso aprobado habilita la operación) | `Permisos.OperacionesPorPermiso` en `Permisos.cs` y `Autorizador.cs` |
+| Endpoints de gestión de permisos | `src/SaveStock.Web/Endpoints/GestionPermisosEndpoints.cs` |
+| RD-12 (pruebas sin levantar la aplicación) | `tests/SaveStock.Tests/Unitarias/` (Gestión de permisos en `Unitarias/GestionPermisos/`) |
 | Endpoints (solo traducen HTTP, RD-02) | `src/SaveStock.Web/Endpoints/` |
 
 ## Estructura del proyecto
@@ -739,8 +954,8 @@ responsabilidad (RD-01) y la dependencia va en un solo sentido: el Core no refer
 SaveStock.slnx
 Directory.Build.props      configuración común (net10.0, versión)
 .env.example               nombres de las variables de entorno, sin valores
-docs/                      maquina-de-estados.md
-src/SaveStock.Core/        Comun/, ControlAcceso/, Correo/, Datos/
+docs/                      maquina-de-estados.md, gestion-de-permisos.md
+src/SaveStock.Core/        Comun/, ControlAcceso/, Correo/, Datos/, GestionPermisos/
 src/SaveStock.Inventario/  OrdenesDeCompra/, Datos/
 src/SaveStock.Web/         Endpoints/, Filtros/, Errores/, Pages/
 src/SaveStock.Enviador/
@@ -749,7 +964,14 @@ tests/SaveStock.Tests/     Unitarias/, Integracion/, Apoyo/
 
 ## Entrega
 
-Lo que se califica es la etiqueta `practica-1` (versión `1.0.0`):
+La Asignación 2 (Gestión de permisos) se entrega en la etiqueta `asignacion-2` (versión `1.1.0`), y
+su bitácora está en `docs/bitacora-asignacion-2.md`:
+
+```bash
+git checkout asignacion-2
+```
+
+La Práctica 1 sigue en la etiqueta `practica-1` (versión `1.0.0`):
 
 ```bash
 git checkout practica-1
