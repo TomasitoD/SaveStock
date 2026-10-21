@@ -4,6 +4,7 @@ using SaveStock.Core.Comun;
 using SaveStock.Core.ControlAcceso.Autorizacion;
 using SaveStock.Core.ControlAcceso.Entidades;
 using SaveStock.Core.ControlAcceso.Sesiones;
+using SaveStock.Core.GestionPermisos;
 using SaveStock.Web.Errores;
 using SaveStock.Web.Filtros;
 
@@ -53,7 +54,15 @@ public abstract class PaginaSaveStock : PageModel
     {
         await CargarSesionAsync();
 
-        var autorizacion = Autorizador.Autorizar(operacion, UsuarioActual);
+        // Igual que FiltroOperacion: los permisos otorgados por una solicitud aprobada también cuentan (RF-GP-05).
+        IReadOnlyCollection<PermisoSolicitable> permisosOtorgados = [];
+        if (UsuarioActual is not null)
+        {
+            var gestionPermisos = HttpContext.RequestServices.GetRequiredService<ServicioGestionPermisos>();
+            permisosOtorgados = await gestionPermisos.ListarPermisosOtorgadosAsync(UsuarioActual.Id);
+        }
+
+        var autorizacion = Autorizador.Autorizar(operacion, UsuarioActual, permisosOtorgados);
         if (autorizacion.Exito)
         {
             return null;
