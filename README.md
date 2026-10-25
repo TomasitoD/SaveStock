@@ -11,6 +11,10 @@ pide un permiso que su rol no le da, un Administrador lo aprueba o lo rechaza co
 aprobarlo el sistema lo aplica solo. Se verifica en la [sección 8](#8-gestión-de-permisos-rf-gp-01-a-rf-gp-07-rd-04-rd-06-rd-07-rd-09)
 y sus pruebas se ejecutan como dice [Pruebas](#pruebas).
 
+La **Práctica 2** amplía esa suite hasta cubrir las siete reglas RF-GP y demuestra que detecta los seis
+defectos de la variante B: cada defecto está plantado en su propia etiqueta, y la sección
+[Defectos](#defectos) dice qué prueba lo detecta.
+
 Todos los comandos de este README se ejecutan **desde la raíz del repositorio**.
 
 ## Requisitos
@@ -28,7 +32,7 @@ Los comandos están escritos para bash o zsh (macOS, Linux, o Git Bash / WSL en 
 ```bash
 git clone https://github.com/TomasitoD/SaveStock.git
 cd SaveStock
-git checkout asignacion-2
+git checkout practica-2
 dotnet restore
 ```
 
@@ -146,6 +150,48 @@ Además hay pruebas unitarias de los servicios del Core que no levantan la web (
 que levantan la API en memoria con una base SQLite temporal. Cubren también lo que no se puede provocar
 a mano en pocos minutos: el vencimiento del bloqueo (15 minutos), del código de recuperación
 (15 minutos) y del enlace de activación (24 horas).
+
+### Qué prueba identifica cada requisito RF-GP
+
+Cada prueba de Gestión de permisos lleva `[Trait("Requisito", "RF-GP-..")]` con su requisito. Algunas:
+
+| Requisito | Prueba (en `tests/SaveStock.Tests/Unitarias/GestionPermisos/`) |
+|---|---|
+| RF-GP-01 | `ServicioGestionPermisosTests.CrearSolicitud_PermisoValido_NaceEnPendiente` |
+| RF-GP-02 | `ServicioGestionPermisosTests.ListarMias_ConSolicitudesDeVariosUsuarios_SoloDevuelveLasDelPropioUsuario` |
+| RF-GP-03 | `ServicioGestionPermisosTests.Aprobar_SolicitudPendiente_QuedaAplicadaYRegistraQuienAproboYCuando`, `ServicioGestionPermisosTests.Aprobar_PorUnUsuarioEstandar_SeRechazaYSiguePendiente` |
+| RF-GP-04 | `ServicioGestionPermisosTests.Rechazar_ConMotivoVacioOAusente_NoSeCompletaYSiguePendiente`, `MaquinaEstadosSolicitudPermisoTests.Rechazar_SinMotivoEscrito_SeRechazaYLaSolicitudSigueEnPendiente` |
+| RF-GP-05 | `ServicioGestionPermisosTests.Aprobar_SolicitudPendiente_OtorgaElPermisoAlSolicitanteSinOtroPaso`, `ServicioGestionPermisosTests.Autorizar_ListarUsuarios_EstandarConSolicitudAprobada_EstaPermitido` |
+| RF-GP-06 | `ServicioGestionPermisosTests.Aprobar_DosVecesLaMismaSolicitud_LaSegundaSeRechazaYNadaCambia`, `MaquinaEstadosSolicitudPermisoTests.Aplicar_DeRechazadaAAplicada_SeRechazaYElEstadoSigueRechazada`, `MaquinaEstadosSolicitudPermisoTests.Rechazar_SolicitudAprobada_SeRechazaYSigueAprobada` |
+| RF-GP-07 | `ServicioGestionPermisosTests.Aprobar_SolicitudCreadaPorElMismoAdministrador_SeRechazaYSiguePendiente`, `ServicioGestionPermisosTests.Rechazar_SolicitudCreadaPorElMismoAdministrador_SeRechazaYSiguePendiente` |
+
+## Defectos
+
+Los seis defectos de la **variante B** están plantados, uno por etiqueta, en `practica-2-defecto-1` a
+`practica-2-defecto-6`. Cada commit de defecto tiene como padre el commit de `practica-2`, solo cambia
+código de Gestión de permisos (`src/SaveStock.Core/GestionPermisos/`) y no toca ninguna prueba. Su
+mensaje dice qué archivo y qué línea cambió.
+
+| Defecto | Requisito | Qué se plantó | Prueba que lo detecta | Comportamiento que comprueba |
+|---|---|---|---|---|
+| 1 | RF-GP-04 | Al rechazar, solo se comprueba que el motivo fue enviado, no que tenga contenido | `MaquinaEstadosSolicitudPermisoTests.Rechazar_SinMotivoEscrito_SeRechazaYLaSolicitudSigueEnPendiente` (casos `""` y `"   "`) | Un rechazo con motivo vacío no se completa y la solicitud sigue Pendiente |
+| 2 | RF-GP-06 | Se agrega la transición Aprobada → Rechazada | `MaquinaEstadosSolicitudPermisoTests.Rechazar_SolicitudAprobada_SeRechazaYSigueAprobada` | Una solicitud aprobada no puede rechazarse y su estado sigue Aprobada |
+| 3 | RF-GP-03 | Se elimina la verificación de que quien aprueba es Administrador | `ServicioGestionPermisosTests.Aprobar_PorUnUsuarioEstandar_SeRechazaYSiguePendiente` | Un Estándar que intenta aprobar recibe un rechazo y la solicitud sigue Pendiente, sin aprobador |
+| 4 | RF-GP-07 | Se invierte la condición de "nadie resuelve su propia solicitud" | `ServicioGestionPermisosTests.Aprobar_SolicitudCreadaPorElMismoAdministrador_SeRechazaYSiguePendiente` | Un Administrador no puede aprobar una solicitud creada por él mismo |
+| 5 | RF-GP-06 | Se agrega la transición Aplicada → Rechazada | `ServicioGestionPermisosTests.Rechazar_SolicitudYaAplicada_SeRechazaYSigueAplicada` | Una solicitud ya aplicada no puede rechazarse y su estado sigue Aplicada |
+| 6 | RF-GP-03 | Al aprobar, se deja de registrar quién aprobó y cuándo | `ServicioGestionPermisosTests.Aprobar_SolicitudPendiente_QuedaAplicadaYRegistraQuienAproboYCuando` | Al aprobar queda registrado el Administrador que aprobó y la fecha |
+
+Para comprobar un defecto, por ejemplo el 3:
+
+```bash
+git checkout practica-2-defecto-3
+git log -1 --format=%B
+git diff practica-2 practica-2-defecto-3 --stat
+dotnet test
+```
+
+`dotnet test` reporta al menos una prueba fallida, entre ellas la de la tabla. Para volver al estado
+entregado, donde pasan todas: `git checkout practica-2`.
 
 ## Cómo verificar cada criterio
 
@@ -963,6 +1009,13 @@ tests/SaveStock.Tests/     Unitarias/, Integracion/, Apoyo/
 ```
 
 ## Entrega
+
+La Práctica 2 se entrega en la etiqueta `practica-2` (versión `2.0.0`). Los seis defectos plantados están
+en las etiquetas `practica-2-defecto-1` a `practica-2-defecto-6` (ver [Defectos](#defectos)):
+
+```bash
+git checkout practica-2
+```
 
 La Asignación 2 (Gestión de permisos) se entrega en la etiqueta `asignacion-2` (versión `1.1.0`), y
 su bitácora está en `docs/bitacora-asignacion-2.md`:
