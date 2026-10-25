@@ -75,7 +75,7 @@ public static class MaquinaEstadosSolicitudPermiso
         var motivoLimpio = motivo?.Trim();
         if (hacia == EstadoSolicitudPermiso.Rechazada)
         {
-            if (string.IsNullOrEmpty(motivoLimpio))
+            if (motivoLimpio is null)
             {
                 return Resultado.Error(TipoError.Validacion, MensajeMotivoObligatorio);
             }
