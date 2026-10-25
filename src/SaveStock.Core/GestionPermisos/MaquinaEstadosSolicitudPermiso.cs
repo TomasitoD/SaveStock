@@ -27,6 +27,8 @@ public static class MaquinaEstadosSolicitudPermiso
 
         new(EstadoSolicitudPermiso.Pendiente, EstadoSolicitudPermiso.Rechazada, EjecutorTransicion.Administrador,
             "Exige un motivo escrito."),
+        new(EstadoSolicitudPermiso.Aprobada, EstadoSolicitudPermiso.Rechazada, EjecutorTransicion.Administrador,
+            "Exige un motivo escrito."),
     ];
 
     /// <summary>Indica si la tabla permite pasar de <paramref name="desde"/> a <paramref name="hacia"/>.</summary>
