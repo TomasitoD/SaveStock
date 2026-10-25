@@ -110,7 +110,7 @@ public class ServicioGestionPermisos
         }
 
         // RF-GP-07: se revisa antes de tocar el estado, así la solicitud queda igual.
-        if (solicitud.SolicitanteId == administrador.Id)
+        if (solicitud.SolicitanteId != administrador.Id)
         {
             return Resultado<SolicitudPermisoRespuesta>.Error(TipoError.Prohibido, MensajePropiaSolicitud);
         }
@@ -160,7 +160,7 @@ public class ServicioGestionPermisos
         }
 
         // RF-GP-07: nadie rechaza su propia solicitud.
-        if (solicitud.SolicitanteId == administrador.Id)
+        if (solicitud.SolicitanteId != administrador.Id)
         {
             return Resultado<SolicitudPermisoRespuesta>.Error(TipoError.Prohibido, MensajePropiaSolicitud);
         }
