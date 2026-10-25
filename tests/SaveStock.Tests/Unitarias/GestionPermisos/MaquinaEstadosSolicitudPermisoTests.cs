@@ -23,6 +23,17 @@ public class MaquinaEstadosSolicitudPermisoTests
         FechaCreacion = FechaCreacion,
     };
 
+    /// <summary>
+    /// Lleva una solicitud nueva hasta Aprobada, sin aplicarla todavía. El estado solo se cambia a
+    /// través de la máquina (RD-04), así que se llega a él por la única transición permitida.
+    /// </summary>
+    private static SolicitudPermiso SolicitudAprobada(IReloj reloj)
+    {
+        var solicitud = NuevaSolicitudPendiente();
+        MaquinaEstadosSolicitudPermiso.Aplicar(solicitud, EstadoSolicitudPermiso.Aprobada, EjecutorTransicion.Administrador, reloj, IdAdministrador);
+        return solicitud;
+    }
+
     /// <summary>Lleva una solicitud nueva hasta Aplicada por el camino permitido (aprobar y aplicar).</summary>
     private static SolicitudPermiso SolicitudAplicada(IReloj reloj)
     {
@@ -164,6 +175,29 @@ public class MaquinaEstadosSolicitudPermisoTests
         Assert.Equal(EstadoSolicitudPermiso.Aplicada, solicitud.Estado);
         Assert.Equal(IdAdministrador, solicitud.AprobadorId);
         Assert.Equal(fechaPrimeraAprobacion, solicitud.FechaResolucion);
+    }
+
+    [Fact]
+    [Trait("Requisito", "RF-GP-06")]
+    public void Rechazar_SolicitudAprobada_SeRechazaYSigueAprobada()
+    {
+        // Preparar
+        var reloj = new RelojFalso();
+        var solicitud = SolicitudAprobada(reloj);
+        var fechaAprobacion = solicitud.FechaResolucion;
+        reloj.Avanzar(TimeSpan.FromHours(1));
+
+        // Actuar: otro Administrador intenta rechazar una solicitud que ya se aprobó.
+        var resultado = MaquinaEstadosSolicitudPermiso.Aplicar(
+            solicitud, EstadoSolicitudPermiso.Rechazada, EjecutorTransicion.Administrador, reloj, IdOtroAdministrador, "Me arrepentí.");
+
+        // Verificar
+        Assert.Equal(TipoError.Conflicto, resultado.TipoError);
+        Assert.Equal("La solicitud está en estado Aprobada y no se puede rechazar.", resultado.Mensaje);
+        Assert.Equal(EstadoSolicitudPermiso.Aprobada, solicitud.Estado);
+        Assert.Null(solicitud.MotivoRechazo);
+        Assert.Equal(IdAdministrador, solicitud.AprobadorId);
+        Assert.Equal(fechaAprobacion, solicitud.FechaResolucion);
     }
 
     [Fact]
