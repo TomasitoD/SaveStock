@@ -7,7 +7,8 @@ namespace SaveStock.Core.GestionPermisos;
 
 /// <summary>
 /// Solicitud, aprobación y rechazo de permisos (RF-GP-01 a RF-GP-07). Quién puede llamar cada
-/// método lo declara Permisos y lo aplica la Web (RD-06). Los cambios de estado los decide solo
+/// método lo declara Permisos y lo aplica la Web (RD-06); además, aprobar y rechazar verifican
+/// aquí mismo que quien resuelve sea Administrador. Los cambios de estado los decide solo
 /// <see cref="MaquinaEstadosSolicitudPermiso"/> (RD-04).
 /// </summary>
 public class ServicioGestionPermisos
@@ -16,6 +17,7 @@ public class ServicioGestionPermisos
     public const string MensajePropiaSolicitud = "No puedes resolver tu propia solicitud.";
     public const string MensajeYaTienePermiso = "Ya tienes ese permiso.";
     public const string MensajeYaHayPendiente = "Ya tienes una solicitud pendiente para ese permiso.";
+    public const string MensajeSoloAdministrador = "Solo un Administrador puede resolver solicitudes de permiso.";
 
     /// <summary>"El permiso solicitado no existe. Permisos válidos: VerListadoUsuarios."</summary>
     public static readonly string MensajePermisoNoExiste =
@@ -101,6 +103,12 @@ public class ServicioGestionPermisos
             return Resultado<SolicitudPermisoRespuesta>.Error(TipoError.NoEncontrado, MensajeSolicitudNoExiste);
         }
 
+        // RF-GP-03 y RD-06: solo un Administrador aprueba, aunque alguien llame al servicio sin pasar por la Web.
+        if (!PuedeResolver(administrador))
+        {
+            return Resultado<SolicitudPermisoRespuesta>.Error(TipoError.Prohibido, MensajeSoloAdministrador);
+        }
+
         // RF-GP-07: se revisa antes de tocar el estado, así la solicitud queda igual.
         if (solicitud.SolicitanteId == administrador.Id)
         {
@@ -145,6 +153,13 @@ public class ServicioGestionPermisos
             return Resultado<SolicitudPermisoRespuesta>.Error(TipoError.NoEncontrado, MensajeSolicitudNoExiste);
         }
 
+        // RF-GP-03, RF-GP-04 y RD-06: solo un Administrador rechaza, aunque alguien llame al servicio sin pasar por la Web.
+        if (!PuedeResolver(administrador))
+        {
+            return Resultado<SolicitudPermisoRespuesta>.Error(TipoError.Prohibido, MensajeSoloAdministrador);
+        }
+
+        // RF-GP-07: nadie rechaza su propia solicitud.
         if (solicitud.SolicitanteId == administrador.Id)
         {
             return Resultado<SolicitudPermisoRespuesta>.Error(TipoError.Prohibido, MensajePropiaSolicitud);
@@ -171,6 +186,12 @@ public class ServicioGestionPermisos
             .Select(p => p.Permiso)
             .ToListAsync();
     }
+
+    /// <summary>
+    /// Solo un Administrador resuelve (aprueba o rechaza) solicitudes (RF-GP-03, RD-06). La Web ya lo
+    /// filtra, pero el servicio no confía en eso: la autorización se revisa en cada operación.
+    /// </summary>
+    private static bool PuedeResolver(Usuario usuario) => usuario.Rol == Rol.Administrador;
 
     private IQueryable<SolicitudPermiso> ConsultaConUsuarios() =>
         _db.SolicitudesPermiso.AsNoTracking().Include(s => s.Solicitante).Include(s => s.Aprobador);
