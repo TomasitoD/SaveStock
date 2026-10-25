@@ -11,6 +11,10 @@ pide un permiso que su rol no le da, un Administrador lo aprueba o lo rechaza co
 aprobarlo el sistema lo aplica solo. Se verifica en la [sección 8](#8-gestión-de-permisos-rf-gp-01-a-rf-gp-07-rd-04-rd-06-rd-07-rd-09)
 y sus pruebas se ejecutan como dice [Pruebas](#pruebas).
 
+La **Práctica 2** amplía esa suite hasta cubrir las siete reglas RF-GP y demuestra que detecta los seis
+defectos de la variante B: cada defecto está plantado en su propia etiqueta, y la sección
+[Defectos](#defectos) dice qué prueba lo detecta.
+
 Todos los comandos de este README se ejecutan **desde la raíz del repositorio**.
 
 ## Requisitos
@@ -28,7 +32,7 @@ Los comandos están escritos para bash o zsh (macOS, Linux, o Git Bash / WSL en 
 ```bash
 git clone https://github.com/TomasitoD/SaveStock.git
 cd SaveStock
-git checkout asignacion-2
+git checkout practica-2
 dotnet restore
 ```
 
@@ -1005,6 +1009,13 @@ tests/SaveStock.Tests/     Unitarias/, Integracion/, Apoyo/
 ```
 
 ## Entrega
+
+La Práctica 2 se entrega en la etiqueta `practica-2` (versión `2.0.0`). Los seis defectos plantados están
+en las etiquetas `practica-2-defecto-1` a `practica-2-defecto-6` (ver [Defectos](#defectos)):
+
+```bash
+git checkout practica-2
+```
 
 La Asignación 2 (Gestión de permisos) se entrega en la etiqueta `asignacion-2` (versión `1.1.0`), y
 su bitácora está en `docs/bitacora-asignacion-2.md`:
