@@ -390,6 +390,7 @@ public sealed class ServicioGestionPermisosTests : IDisposable
     }
 
     [Fact]
+    [Trait("Requisito", "RF-GP-03")]
     public async Task Aprobar_SolicitudQueNoExiste_DevuelveNoEncontrado()
     {
         // Preparar
