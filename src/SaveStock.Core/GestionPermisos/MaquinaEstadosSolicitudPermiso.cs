@@ -92,8 +92,6 @@ public static class MaquinaEstadosSolicitudPermiso
         switch (hacia)
         {
             case EstadoSolicitudPermiso.Aprobada:
-                solicitud.AprobadorId = administradorId;
-                solicitud.FechaResolucion = ahora;
                 break;
             case EstadoSolicitudPermiso.Rechazada:
                 solicitud.AprobadorId = administradorId;
