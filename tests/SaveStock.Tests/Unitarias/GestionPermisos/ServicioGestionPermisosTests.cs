@@ -235,9 +235,12 @@ public sealed class ServicioGestionPermisosTests : IDisposable
         Assert.Equal("Su puesto no necesita ver a los usuarios.", guardada.MotivoRechazo);
     }
 
-    [Fact]
+    [Theory]
     [Trait("Requisito", "RF-GP-04")]
-    public async Task Rechazar_SinMotivo_NoSeCompletaYLaSolicitudSiguePendiente()
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Rechazar_ConMotivoVacioOAusente_NoSeCompletaYSiguePendiente(string? motivo)
     {
         // Preparar
         var admin = await _bd.CrearUsuarioAsync("admin@negocio.com", rol: Rol.Administrador);
@@ -245,12 +248,15 @@ public sealed class ServicioGestionPermisosTests : IDisposable
         var id = await CrearSolicitudAsync(estandar);
 
         // Actuar
-        var resultado = await NuevoServicio().RechazarAsync(admin, id, "   ");
+        var resultado = await NuevoServicio().RechazarAsync(admin, id, motivo);
 
         // Verificar
         Assert.Equal(TipoError.Validacion, resultado.TipoError);
         Assert.Equal("El rechazo necesita un motivo escrito.", resultado.Mensaje);
-        Assert.Equal(EstadoSolicitudPermiso.Pendiente, (await LeerSolicitudAsync(id)).Estado);
+        var guardada = await LeerSolicitudAsync(id);
+        Assert.Equal(EstadoSolicitudPermiso.Pendiente, guardada.Estado);
+        Assert.Null(guardada.AprobadorId);
+        Assert.Null(guardada.MotivoRechazo);
     }
 
     [Fact]
