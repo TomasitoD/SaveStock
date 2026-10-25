@@ -103,12 +103,6 @@ public class ServicioGestionPermisos
             return Resultado<SolicitudPermisoRespuesta>.Error(TipoError.NoEncontrado, MensajeSolicitudNoExiste);
         }
 
-        // RF-GP-03 y RD-06: solo un Administrador aprueba, aunque alguien llame al servicio sin pasar por la Web.
-        if (!PuedeResolver(administrador))
-        {
-            return Resultado<SolicitudPermisoRespuesta>.Error(TipoError.Prohibido, MensajeSoloAdministrador);
-        }
-
         // RF-GP-07: se revisa antes de tocar el estado, así la solicitud queda igual.
         if (solicitud.SolicitanteId == administrador.Id)
         {
