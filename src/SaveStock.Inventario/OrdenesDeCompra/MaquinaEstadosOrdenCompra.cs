@@ -34,6 +34,8 @@ public static class MaquinaEstadosOrdenCompra
 
         new(EstadoOrdenCompra.Enviada, EstadoOrdenCompra.Cancelada, SoloAdministrador,
             "El proveedor no entrega la mercancía."),
+        new(EstadoOrdenCompra.Recibida, EstadoOrdenCompra.Borrador, EstandarOAdministrador,
+            "Ninguna."),
     ];
 
     /// <summary>Estados de los que no sale ninguna transición (RF-NEG-05).</summary>
