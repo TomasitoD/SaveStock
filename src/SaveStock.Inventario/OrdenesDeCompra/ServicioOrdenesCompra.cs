@@ -99,15 +99,6 @@ public class ServicioOrdenesCompra
     {
         var orden = await _db.OrdenesDeCompra.FindAsync(idOrden);
 
-        if (usuario.Rol != Rol.Administrador)
-        {
-            var permisos = await _gestionPermisos.ListarPermisosOtorgadosAsync(usuario.Id);
-            if (!permisos.Contains(PermisoSolicitable.RecibirOrdenesDeCompra))
-            {
-                return Resultado<OrdenDeCompraRespuesta>.Error(TipoError.Prohibido, MensajeNecesitaPermiso);
-            }
-        }
-
         return await CambiarEstadoAsync(usuario, orden, EstadoOrdenCompra.Recibida);
     }
 
