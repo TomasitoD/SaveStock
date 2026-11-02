@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SaveStock.Core.Comun;
 using SaveStock.Inventario.Datos;
+using SaveStock.Inventario.OrdenesDeCompra;
 
 namespace SaveStock.Inventario;
 
@@ -20,6 +21,8 @@ public static class InventarioModulo
 
         // Crea datos/inventario.db y la tabla OrdenesDeCompra al iniciar.
         services.AddHostedService<InicializadorInventario>();
+
+        services.AddScoped<ServicioOrdenesCompra>();
 
         // La máquina de estados (OrdenesDeCompra/MaquinaEstadosOrdenCompra) es una clase estática,
         // como Permisos en el Core: no hace falta registrarla.
