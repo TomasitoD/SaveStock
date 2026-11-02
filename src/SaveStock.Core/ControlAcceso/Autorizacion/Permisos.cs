@@ -25,6 +25,15 @@ public static class Permisos
         [Operacion.CrearSolicitudPermiso] = NivelAcceso.Autenticado,
         [Operacion.ConsultarMisSolicitudesPermiso] = NivelAcceso.Autenticado,
 
+        // Inventario: exigen sesión; el rol de cada cambio de estado lo decide su máquina de estados,
+        // y recibir una orden también exige el permiso (RF-NEG-06).
+        [Operacion.CrearOrdenDeCompra] = NivelAcceso.Autenticado,
+        [Operacion.ListarOrdenesDeCompra] = NivelAcceso.Autenticado,
+        [Operacion.ConsultarOrdenDeCompra] = NivelAcceso.Autenticado,
+        [Operacion.EnviarOrdenDeCompra] = NivelAcceso.Autenticado,
+        [Operacion.RecibirOrdenDeCompra] = NivelAcceso.Autenticado,
+        [Operacion.CancelarOrdenDeCompra] = NivelAcceso.Autenticado,
+
         [Operacion.ListarUsuarios] = NivelAcceso.Administrador,
         [Operacion.CambiarRol] = NivelAcceso.Administrador,
         [Operacion.DesactivarUsuario] = NivelAcceso.Administrador,
@@ -43,6 +52,7 @@ public static class Permisos
     public static readonly IReadOnlyDictionary<PermisoSolicitable, Operacion> OperacionesPorPermiso = new Dictionary<PermisoSolicitable, Operacion>
     {
         [PermisoSolicitable.VerListadoUsuarios] = Operacion.ListarUsuarios,
+        [PermisoSolicitable.RecibirOrdenesDeCompra] = Operacion.RecibirOrdenDeCompra,
     };
 
     /// <summary>true si alguno de los permisos otorgados habilita la operación.</summary>

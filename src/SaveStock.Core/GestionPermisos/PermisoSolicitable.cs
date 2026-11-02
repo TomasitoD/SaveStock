@@ -9,4 +9,7 @@ public enum PermisoSolicitable
 {
     /// <summary>Ver el listado de usuarios (GET /api/admin/usuarios), que por rol es solo de Administrador.</summary>
     VerListadoUsuarios,
+
+    /// <summary>Recibir órdenes de compra del inventario, que sin este permiso es solo de Administrador.</summary>
+    RecibirOrdenesDeCompra,
 }

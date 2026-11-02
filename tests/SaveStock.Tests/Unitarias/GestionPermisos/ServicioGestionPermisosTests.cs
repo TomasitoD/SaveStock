@@ -87,7 +87,7 @@ public sealed class ServicioGestionPermisosTests : IDisposable
 
         // Verificar
         Assert.Equal(TipoError.Validacion, resultado.TipoError);
-        Assert.Equal("El permiso solicitado no existe. Permisos válidos: VerListadoUsuarios.", resultado.Mensaje);
+        Assert.Equal("El permiso solicitado no existe. Permisos válidos: VerListadoUsuarios, RecibirOrdenesDeCompra.", resultado.Mensaje);
         using var db = _bd.CrearContexto();
         Assert.Equal(0, await db.SolicitudesPermiso.CountAsync());
     }
