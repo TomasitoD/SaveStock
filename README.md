@@ -15,6 +15,10 @@ La **Práctica 2** amplía esa suite hasta cubrir las siete reglas RF-GP y demue
 defectos de la variante B: cada defecto está plantado en su propia etiqueta, y la sección
 [Defectos](#defectos) dice qué prueba lo detecta.
 
+La **Práctica 3** pone a funcionar el **módulo de inventario**: las órdenes de compra se crean, se
+consultan, se envían, se reciben y se cancelan (ver la [sección 9](#9-órdenes-de-compra-rf-neg-02-a-rf-neg-06-rf-neg-09-rd-04-rd-07-rd-09)).
+Un Estándar solo puede recibir una orden si un Administrador le aprobó el permiso.
+
 Todos los comandos de este README se ejecutan **desde la raíz del repositorio**.
 
 ## Requisitos
@@ -32,7 +36,7 @@ Los comandos están escritos para bash o zsh (macOS, Linux, o Git Bash / WSL en 
 ```bash
 git clone https://github.com/TomasitoD/SaveStock.git
 cd SaveStock
-git checkout practica-2
+git checkout practica-3
 dotnet restore
 ```
 
@@ -151,6 +155,13 @@ que levantan la API en memoria con una base SQLite temporal. Cubren también lo 
 a mano en pocos minutos: el vencimiento del bloqueo (15 minutos), del código de recuperación
 (15 minutos) y del enlace de activación (24 horas).
 
+Las pruebas de la **máquina de estados del inventario** están en
+`tests/SaveStock.Tests/Unitarias/Inventario/MaquinaEstadosOrdenCompraTests.cs`: hay al menos una por cada
+fila de las tablas de `docs/maquina-de-estados.md` y por los estados terminales. La **prueba de
+integración con Gestión de permisos** es
+`tests/SaveStock.Tests/Integracion/InventarioConGestionPermisosTests.cs`: usa los dos servicios reales,
+sin dobles y sin levantar la aplicación.
+
 ### Qué prueba identifica cada requisito RF-GP
 
 Cada prueba de Gestión de permisos lleva `[Trait("Requisito", "RF-GP-..")]` con su requisito. Algunas:
@@ -192,6 +203,22 @@ dotnet test
 
 `dotnet test` reporta al menos una prueba fallida, entre ellas la de la tabla. Para volver al estado
 entregado, donde pasan todas: `git checkout practica-2`.
+
+### Defectos de la Práctica 3
+
+Los cuatro defectos están en `practica-3-defecto-1` a `practica-3-defecto-4`. Cada commit tiene como
+padre el commit de `practica-3`, solo cambia código de producción y su mensaje dice qué archivo y qué
+línea cambió.
+
+| Defecto | Qué se plantó | Prueba que lo detecta | Comportamiento que comprueba |
+|---|---|---|---|
+| 1 | Se agrega a las permitidas Recibida → Borrador, la primera de la tabla de prohibidas | `MaquinaEstadosOrdenCompraTests.Aplicar_DeRecibidaABorrador_SeRechazaYSigueRecibida` | Pasar de Recibida a Borrador se rechaza y el estado sigue Recibida |
+| 2 | Se agrega la transición Cancelada → Enviada, que parte de un estado terminal | `MaquinaEstadosOrdenCompraTests.Transiciones_NingunaParteDeUnEstadoTerminal` | Ninguna transición parte de un estado terminal |
+| 3 | Se elimina la verificación de la condición de Borrador → Enviada (tener proveedor) | `MaquinaEstadosOrdenCompraTests.Enviar_OrdenSinProveedor_SeRechazaYSigueEnBorrador` | Una orden sin proveedor no se puede enviar y sigue en Borrador |
+| 4 | En `RecibirAsync` se elimina la consulta a Gestión de permisos | `InventarioConGestionPermisosTests.RecibirOrden_SeRechazaAntesDeAprobarYSePermiteDespues` | Recibir se rechaza antes de aprobar el permiso y se permite después |
+
+Para comprobar uno: `git checkout practica-3-defecto-N`, `git log -1 --format=%B`,
+`git diff practica-3 practica-3-defecto-N --stat` y `dotnet test`. Para volver: `git checkout practica-3`.
 
 ## Cómo verificar cada criterio
 
@@ -830,7 +857,7 @@ curl -s -w ' -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes" \
 | Sofía lista usuarios antes de pedir el permiso | `{"mensaje":"No tienes permiso para realizar esta operación."} -> 403` |
 | Crear la solicitud | `{"id":1,"solicitante":{"id":2,"nombre":"sofia"},"permiso":"VerListadoUsuarios","estado":"Pendiente","aprobador":null,...}` y el id |
 | Pedir lo mismo otra vez | `{"mensaje":"Ya tienes una solicitud pendiente para ese permiso."} -> 409` |
-| Un permiso que no existe | `{"mensaje":"El permiso solicitado no existe. Permisos válidos: VerListadoUsuarios."} -> 400` |
+| Un permiso que no existe | `{"mensaje":"El permiso solicitado no existe. Permisos válidos: VerListadoUsuarios, RecibirOrdenesDeCompra."} -> 400` |
 | JSON mal formado | `{"mensaje":"La solicitud no es válida."} -> 400` |
 | Sin sesión | `{"mensaje":"Necesitas iniciar sesión."} -> 401` |
 
@@ -954,6 +981,84 @@ La solicitud de Sofía sigue `Aplicada` con su aprobador y sus fechas, Sofía si
 usuarios (`200`) y la base muestra las tres solicitudes: `Aplicada`, `Rechazada` con su motivo y
 `Pendiente`. Viven en `datos/savestock.db`, fuera del proceso.
 
+### 9. Órdenes de compra (RF-NEG-02 a RF-NEG-06, RF-NEG-09, RD-04, RD-07, RD-09)
+
+Usa las variables `API`, `SOFIA`, `TITO` y `ADMIN` de la Preparación y del paso 8.1. Si la sesión venció,
+repite el 8.1. Las seis funcionalidades son crear, listar, consultar, enviar, cancelar y recibir. Todas
+exigen sesión (RF-NEG-06).
+
+**9.1 Crear una orden: nace en Borrador.**
+
+```bash
+ORDEN=$(curl -s -X POST "$API/api/ordenes" -H "Authorization: Bearer $SOFIA" \
+  -H 'Content-Type: application/json' -d '{"proveedor":"Distribuidora Central"}' | tee /dev/stderr | jq .id)
+echo; echo "$ORDEN"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/ordenes" -H "Authorization: Bearer $SOFIA" \
+  -H 'Content-Type: application/json' -d '{"proveedor":"   "}'
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/ordenes" \
+  -H 'Content-Type: application/json' -d '{"proveedor":"Sin sesión"}'
+```
+
+Resultado: la orden con `"estado":"Borrador"`, un `400` sin proveedor y un `401` sin sesión.
+
+**9.2 Listar y 9.3 consultar: un Estándar solo ve sus órdenes.**
+
+```bash
+curl -s -w ' -> %{http_code}\n' "$API/api/ordenes" -H "Authorization: Bearer $SOFIA"
+curl -s -w ' -> %{http_code}\n' "$API/api/ordenes" -H "Authorization: Bearer $TITO"
+curl -s -w ' -> %{http_code}\n' "$API/api/ordenes" -H "Authorization: Bearer $ADMIN"
+curl -s -w ' -> %{http_code}\n' "$API/api/ordenes/$ORDEN" -H "Authorization: Bearer $SOFIA"
+curl -s -w ' -> %{http_code}\n' "$API/api/ordenes/$ORDEN" -H "Authorization: Bearer $TITO"
+```
+
+Resultado: Sofía ve su orden, Tito una lista vacía, el Administrador todas. Al consultar, Sofía recibe
+`200` y Tito `404`.
+
+**9.4 Enviar: Borrador → Enviada.** Una segunda vez se rechaza y el estado no cambia (RF-NEG-04).
+
+```bash
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/ordenes/$ORDEN/enviar" -H "Authorization: Bearer $SOFIA"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/ordenes/$ORDEN/enviar" -H "Authorization: Bearer $SOFIA"
+```
+
+Resultado: `"estado":"Enviada"` con `200`, y después `{"mensaje":"No se puede pasar una orden de Enviada a Enviada."} -> 400`.
+
+**9.5 Cancelar.** Un Estándar cancela sus borradores, pero una orden enviada solo la cancela un
+Administrador. Cancelada es un estado terminal (RF-NEG-05).
+
+```bash
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/ordenes/$ORDEN/cancelar" -H "Authorization: Bearer $SOFIA"
+OTRA=$(curl -s -X POST "$API/api/ordenes" -H "Authorization: Bearer $SOFIA" \
+  -H 'Content-Type: application/json' -d '{"proveedor":"Almacenes del Norte"}' | jq .id)
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/ordenes/$OTRA/cancelar" -H "Authorization: Bearer $SOFIA"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/ordenes/$OTRA/enviar" -H "Authorization: Bearer $SOFIA"
+```
+
+Resultado: `403` al cancelar la enviada, `"estado":"Cancelada"` con `200` en el borrador, y
+`{"mensaje":"La orden está Cancelada y ya no puede cambiar de estado."} -> 400` al intentar enviarla.
+
+**9.6 Recibir: depende de Gestión de permisos.** Sofía la pide, un Administrador la aprueba y solo
+entonces puede recibir.
+
+```bash
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/ordenes/$ORDEN/recibir" -H "Authorization: Bearer $SOFIA"
+PEDIDO=$(curl -s -X POST "$API/api/permisos/solicitudes" -H "Authorization: Bearer $SOFIA" \
+  -H 'Content-Type: application/json' -d '{"permiso":"RecibirOrdenesDeCompra"}' | jq .id)
+curl -s -o /dev/null -w 'Aprobar -> %{http_code}\n' -X POST "$API/api/permisos/solicitudes/$PEDIDO/aprobar" \
+  -H "Authorization: Bearer $ADMIN"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/ordenes/$ORDEN/recibir" -H "Authorization: Bearer $SOFIA"
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/ordenes/$ORDEN/recibir" -H "Authorization: Bearer $SOFIA"
+```
+
+Resultado: primero `{"mensaje":"Necesitas el permiso RecibirOrdenesDeCompra aprobado para recibir órdenes."} -> 403`,
+después `Aprobar -> 200`, `"estado":"Recibida"` con `200`, y por último un `400` porque Recibida es terminal.
+
+**9.7 Persistencia (RD-09).** Reinicia la web y consulta la orden: sigue en Recibida.
+
+```bash
+sqlite3 datos/inventario.db "select Id, Proveedor, Estado from OrdenesDeCompra;"
+```
+
 ## Dónde está cada cosa
 
 | Requisito | Archivo |
@@ -1009,6 +1114,13 @@ tests/SaveStock.Tests/     Unitarias/, Integracion/, Apoyo/
 ```
 
 ## Entrega
+
+La Práctica 3 se entrega en la etiqueta `practica-3` (versión `3.0.0`). Los cuatro defectos plantados
+están en `practica-3-defecto-1` a `practica-3-defecto-4`:
+
+```bash
+git checkout practica-3
+```
 
 La Práctica 2 se entrega en la etiqueta `practica-2` (versión `2.0.0`). Los seis defectos plantados están
 en las etiquetas `practica-2-defecto-1` a `practica-2-defecto-6` (ver [Defectos](#defectos)):
