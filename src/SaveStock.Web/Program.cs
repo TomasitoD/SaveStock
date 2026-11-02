@@ -54,6 +54,7 @@ app.MapSesionEndpoints();
 app.MapAdministracionEndpoints();
 app.MapContrasenasEndpoints();
 app.MapGestionPermisosEndpoints();
+app.MapOrdenesDeCompraEndpoints();
 
 app.Run();
 

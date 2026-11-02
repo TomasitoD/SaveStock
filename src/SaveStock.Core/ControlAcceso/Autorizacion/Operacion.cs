@@ -36,4 +36,12 @@ public enum Operacion
     ConsultarSolicitudesPendientes,
     AprobarSolicitudPermiso,
     RechazarSolicitudPermiso,
+
+    // Inventario (#50)
+    CrearOrdenDeCompra,
+    ListarOrdenesDeCompra,
+    ConsultarOrdenDeCompra,
+    EnviarOrdenDeCompra,
+    RecibirOrdenDeCompra,
+    CancelarOrdenDeCompra,
 }

@@ -26,8 +26,8 @@ public static class MaquinaEstadosOrdenCompra
             orden => !string.IsNullOrWhiteSpace(orden.Proveedor),
             "La orden necesita un proveedor para poder enviarse."),
 
-        new(EstadoOrdenCompra.Enviada, EstadoOrdenCompra.Recibida, SoloAdministrador,
-            "Llegó la mercancía."),
+        new(EstadoOrdenCompra.Enviada, EstadoOrdenCompra.Recibida, EstandarOAdministrador,
+            "Llegó la mercancía. Un Estándar necesita además el permiso RecibirOrdenesDeCompra (lo revisa ServicioOrdenesCompra)."),
 
         new(EstadoOrdenCompra.Borrador, EstadoOrdenCompra.Cancelada, EstandarOAdministrador,
             "Ninguna: el borrador todavía no se mandó al proveedor."),
@@ -44,8 +44,8 @@ public static class MaquinaEstadosOrdenCompra
     };
 
     /// <summary>
-    /// Transiciones prohibidas a propósito, con su motivo (RF-NEG-04). Ya quedan rechazadas por
-    /// no estar en <see cref="Transiciones"/>; se declaran aparte para explicar por qué.
+    /// Transiciones prohibidas a propósito, con su motivo (RF-NEG-04). Quedan rechazadas por no
+    /// estar en <see cref="Transiciones"/>; se declaran aparte para explicar por qué.
     /// </summary>
     public static readonly IReadOnlyList<TransicionProhibida> TransicionesProhibidasExplicitas =
     [
@@ -72,21 +72,11 @@ public static class MaquinaEstadosOrdenCompra
     {
         var desde = orden.Estado;
 
-        var prohibida = TransicionesProhibidasExplicitas.FirstOrDefault(p => p.Desde == desde && p.Hacia == hacia);
-        if (prohibida is not null)
-        {
-            return Resultado.Error(TipoError.Validacion, $"No se puede pasar una orden de {desde} a {hacia}: {prohibida.Motivo}");
-        }
-
-        if (EstadosTerminales.Contains(desde))
-        {
-            return Resultado.Error(TipoError.Validacion, $"La orden está {desde} y ya no puede cambiar de estado.");
-        }
-
+        // La tabla decide: lo que no está en Transiciones no se puede hacer.
         var transicion = Buscar(desde, hacia);
         if (transicion is null)
         {
-            return Resultado.Error(TipoError.Validacion, $"No se puede pasar una orden de {desde} a {hacia}.");
+            return Resultado.Error(TipoError.Validacion, MotivoDeRechazo(desde, hacia));
         }
 
         if (!transicion.QuienEjecuta.Contains(rol))
@@ -102,6 +92,20 @@ public static class MaquinaEstadosOrdenCompra
         orden.Estado = hacia;
         orden.FechaActualizacion = reloj.AhoraUtc;
         return Resultado.Ok($"La orden pasó de {desde} a {hacia}.");
+    }
+
+    /// <summary>El mensaje para una transición que no está en la tabla.</summary>
+    private static string MotivoDeRechazo(EstadoOrdenCompra desde, EstadoOrdenCompra hacia)
+    {
+        var prohibida = TransicionesProhibidasExplicitas.FirstOrDefault(p => p.Desde == desde && p.Hacia == hacia);
+        if (prohibida is not null)
+        {
+            return $"No se puede pasar una orden de {desde} a {hacia}: {prohibida.Motivo}";
+        }
+
+        return EstadosTerminales.Contains(desde)
+            ? $"La orden está {desde} y ya no puede cambiar de estado."
+            : $"No se puede pasar una orden de {desde} a {hacia}.";
     }
 
     private static Transicion? Buscar(EstadoOrdenCompra desde, EstadoOrdenCompra hacia)

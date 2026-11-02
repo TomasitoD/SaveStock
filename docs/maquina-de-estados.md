@@ -21,7 +21,7 @@ Toda orden nueva empieza en **Borrador**.
 | Desde | Hacia | Quién la ejecuta | Condición |
 |---|---|---|---|
 | Borrador | Enviada | Estándar o Administrador | La orden tiene un proveedor indicado. |
-| Enviada | Recibida | Administrador | Llegó la mercancía. |
+| Enviada | Recibida | Administrador, o Estándar con el permiso `RecibirOrdenesDeCompra` aprobado | Llegó la mercancía. |
 | Borrador | Cancelada | Estándar o Administrador | Ninguna: el borrador todavía no se mandó al proveedor. |
 | Enviada | Cancelada | Administrador | El proveedor no entrega la mercancía. |
 | Cualquier otra combinación | — | — | Prohibida. El sistema la rechaza y el estado no cambia. |
@@ -35,20 +35,24 @@ stateDiagram-v2
     [*] --> Borrador
     Borrador --> Enviada: Estándar o Administrador
     Borrador --> Cancelada: Estándar o Administrador
-    Enviada --> Recibida: Administrador
+    Enviada --> Recibida: Administrador o Estándar con permiso
     Enviada --> Cancelada: Administrador
     Recibida --> [*]
     Cancelada --> [*]
 ```
 
-## Transición prohibida explícita (RF-NEG-04)
+## Transiciones prohibidas (RF-NEG-04)
 
 | Desde | Hacia | Motivo |
 |---|---|---|
 | Recibida | Borrador | La mercancía ya entró al stock y la orden no se puede volver a editar. |
 
-Ya queda rechazada por no estar en la tabla de transiciones permitidas, pero se declara aparte en el
-código para que el motivo quede escrito y el mensaje de error lo explique.
+Queda rechazada por no estar en la tabla de transiciones permitidas, y se declara aparte en el código
+para que el motivo quede escrito y el mensaje de error lo explique.
+
+Recibir una orden depende de Gestión de permisos: `ServicioOrdenesCompra.RecibirAsync` consulta si el
+Estándar tiene el permiso `RecibirOrdenesDeCompra` aprobado antes de llamar a la máquina de estados. La
+máquina de estados no depende de la de Gestión de permisos (RF-NEG-09): cada una tiene sus propios estados.
 
 ## Estados terminales (RF-NEG-05)
 
