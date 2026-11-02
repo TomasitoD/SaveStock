@@ -22,9 +22,7 @@ public static class MaquinaEstadosOrdenCompra
     public static readonly IReadOnlyList<Transicion> Transiciones =
     [
         new(EstadoOrdenCompra.Borrador, EstadoOrdenCompra.Enviada, EstandarOAdministrador,
-            "La orden tiene un proveedor indicado.",
-            orden => !string.IsNullOrWhiteSpace(orden.Proveedor),
-            "La orden necesita un proveedor para poder enviarse."),
+            "La orden tiene un proveedor indicado."),
 
         new(EstadoOrdenCompra.Enviada, EstadoOrdenCompra.Recibida, EstandarOAdministrador,
             "Llegó la mercancía. Un Estándar necesita además el permiso RecibirOrdenesDeCompra (lo revisa ServicioOrdenesCompra)."),
