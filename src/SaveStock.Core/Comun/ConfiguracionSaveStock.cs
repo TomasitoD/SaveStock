@@ -8,6 +8,7 @@ public class ConfiguracionSaveStock
 {
     public const string RutaBaseDatosPorDefecto = "datos/savestock.db";
     public const string RutaBaseDatosInventarioPorDefecto = "datos/inventario.db";
+    public const string RutaDocumentosPorDefecto = "datos/documentos";
     public const string UrlBasePorDefecto = "http://localhost:5080";
     public const int SmtpPuertoPorDefecto = 587;
 
@@ -16,6 +17,9 @@ public class ConfiguracionSaveStock
 
     /// <summary>Ruta absoluta del archivo SQLite del inventario.</summary>
     public string RutaBaseDatosInventario { get; init; } = Path.GetFullPath(RutaBaseDatosInventarioPorDefecto);
+
+    /// <summary>Ruta absoluta de la carpeta donde se guardan los archivos de los documentos (RF-DOC-05).</summary>
+    public string RutaDocumentos { get; init; } = Path.GetFullPath(RutaDocumentosPorDefecto);
 
     /// <summary>URL pública de la web, para armar los enlaces de los correos. Sin barra final.</summary>
     public string UrlBase { get; init; } = UrlBasePorDefecto;
@@ -47,6 +51,7 @@ public class ConfiguracionSaveStock
             // Las rutas relativas se resuelven desde el directorio actual (la raíz del repo al usar dotnet run).
             RutaBaseDatos = Path.GetFullPath(Leer("SAVESTOCK_DB_RUTA") ?? RutaBaseDatosPorDefecto),
             RutaBaseDatosInventario = Path.GetFullPath(Leer("SAVESTOCK_INVENTARIO_DB_RUTA") ?? RutaBaseDatosInventarioPorDefecto),
+            RutaDocumentos = Path.GetFullPath(Leer("SAVESTOCK_DOCUMENTOS_RUTA") ?? RutaDocumentosPorDefecto),
             UrlBase = (Leer("SAVESTOCK_URL_BASE") ?? UrlBasePorDefecto).TrimEnd('/'),
             AdminCorreo = Leer("SAVESTOCK_ADMIN_CORREO"),
             AdminContrasena = Leer("SAVESTOCK_ADMIN_CONTRASENA"),
