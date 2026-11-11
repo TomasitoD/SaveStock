@@ -5,6 +5,7 @@ using SaveStock.Core.ControlAcceso.Entidades;
 using SaveStock.Core.GestionPermisos;
 using SaveStock.Inventario.Datos;
 using SaveStock.Inventario.OrdenesDeCompra;
+using SaveStock.Inventario.TasaDeCambio;
 using SaveStock.Tests.Apoyo;
 
 namespace SaveStock.Tests.Integracion;
@@ -144,6 +145,74 @@ public sealed class InventarioConGestionPermisosTests : IDisposable
 
         // Verificar
         Assert.Equal(TipoError.Validacion, resultado.TipoError);
+    }
+
+    [Fact]
+    [Trait("Requisito", "RF-NEG-02")]
+    public async Task CrearOrden_ConMontoNegativo_SeRechaza()
+    {
+        // Preparar
+        var estandar = await _bd.CrearUsuarioAsync("estandar@negocio.com");
+
+        // Actuar
+        var resultado = await Ordenes().CrearAsync(estandar, "Distribuidora Central", -1m);
+
+        // Verificar
+        Assert.Equal(TipoError.Validacion, resultado.TipoError);
+    }
+
+    [Fact]
+    [Trait("Requisito", "RF-NEG-02")]
+    public async Task TotalEnDolares_ConLaTasaDelDia_DivideElMontoYRedondeaADosDecimales()
+    {
+        // Preparar
+        var estandar = await _bd.CrearUsuarioAsync("estandar@negocio.com");
+        var creada = await Ordenes().CrearAsync(estandar, "Distribuidora Central", 10000m);
+        _tasa.Respuesta = Resultado<TasaUsdDop>.Ok(new TasaUsdDop(59.1234m, "Tue, 10 Nov 2026 00:00:01 +0000"));
+
+        // Actuar
+        var resultado = await Ordenes().TotalEnDolaresAsync(estandar, creada.Valor!.Id);
+
+        // Verificar
+        Assert.True(resultado.Exito);
+        Assert.Equal(169.14m, resultado.Valor!.MontoUsd);
+        Assert.Equal(10000m, resultado.Valor.MontoDop);
+        Assert.Equal(59.1234m, resultado.Valor.PesosPorDolar);
+    }
+
+    [Fact]
+    [Trait("Requisito", "RD-07")]
+    public async Task TotalEnDolares_SiLaTasaFalla_DevuelveElRechazoYLaOrdenNoCambia()
+    {
+        // Preparar
+        var estandar = await _bd.CrearUsuarioAsync("estandar@negocio.com");
+        var creada = await Ordenes().CrearAsync(estandar, "Distribuidora Central", 5000m);
+        _tasa.Respuesta = Resultado<TasaUsdDop>.Error(TipoError.ServicioExterno, ClienteExchangeRateApi.MensajeNoResponde);
+
+        // Actuar
+        var resultado = await Ordenes().TotalEnDolaresAsync(estandar, creada.Valor!.Id);
+
+        // Verificar
+        Assert.Equal(TipoError.ServicioExterno, resultado.TipoError);
+        Assert.Equal(ClienteExchangeRateApi.MensajeNoResponde, resultado.Mensaje);
+        var despues = await Ordenes().ConsultarAsync(estandar, creada.Valor.Id);
+        Assert.Equal(creada.Valor, despues.Valor);
+    }
+
+    [Fact]
+    [Trait("Requisito", "RF-NEG-02")]
+    public async Task TotalEnDolares_DeUnaOrdenDeOtroEstandar_DevuelveNoEncontrado()
+    {
+        // Preparar
+        var ana = await _bd.CrearUsuarioAsync("ana@negocio.com");
+        var luis = await _bd.CrearUsuarioAsync("luis@negocio.com");
+        var deLuis = await Ordenes().CrearAsync(luis, "Proveedor de Luis", 1000m);
+
+        // Actuar
+        var resultado = await Ordenes().TotalEnDolaresAsync(ana, deLuis.Valor!.Id);
+
+        // Verificar
+        Assert.Equal(TipoError.NoEncontrado, resultado.TipoError);
     }
 
     [Fact]
