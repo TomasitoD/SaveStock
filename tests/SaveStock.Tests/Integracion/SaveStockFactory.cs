@@ -29,6 +29,7 @@ public class SaveStockFactory : WebApplicationFactory<Program>
         {
             RutaBaseDatos = Path.Combine(_carpeta, "savestock.db"),
             RutaBaseDatosInventario = Path.Combine(_carpeta, "inventario.db"),
+            RutaDocumentos = Path.Combine(_carpeta, "documentos"),
             UrlBase = "http://localhost",
         };
     }
