@@ -1,0 +1,38 @@
+# SaveStock completo con un solo comando:  docker compose up --build
+# Antes, una sola vez:  cp .env.example .env
+
+services:
+  # La web: API, páginas y documentación. Es el único servicio que publica un puerto.
+  web:
+    build: .
+    image: savestock
+    env_file: .env
+    environment:
+      # Rutas dentro del contenedor. Las bases y los documentos van en volúmenes, fuera de la imagen.
+      SAVESTOCK_DB_RUTA: /app/datos/savestock.db
+      SAVESTOCK_INVENTARIO_DB_RUTA: /app/datos/inventario.db
+      SAVESTOCK_DOCUMENTOS_RUTA: /app/documentos
+    ports:
+      - "5080:5080"
+    volumes:
+      - datos:/app/datos
+      - documentos:/app/documentos
+    restart: unless-stopped
+
+  # El enviador de correos: corre una vez y termina, igual que con dotnet run. No arranca con
+  # "docker compose up"; se ejecuta cuando hace falta con:  docker compose run --rm enviador
+  enviador:
+    build: .
+    image: savestock
+    profiles: ["enviador"]
+    env_file: .env
+    environment:
+      SAVESTOCK_DB_RUTA: /app/datos/savestock.db
+    volumes:
+      - datos:/app/datos
+    entrypoint: ["dotnet", "enviador/SaveStock.Enviador.dll"]
+
+# Volúmenes con nombre: sobreviven a "docker compose down" (sin -v) (RD-09, RF-DOC-05).
+volumes:
+  datos:
+  documentos:
