@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SaveStock.Core.ControlAcceso.Entidades;
 using SaveStock.Core.Correo;
+using SaveStock.Core.Documentos;
 using SaveStock.Core.GestionPermisos;
 
 namespace SaveStock.Core.Datos;
@@ -28,6 +29,8 @@ public class CoreDbContext : DbContext
     public DbSet<SolicitudPermiso> SolicitudesPermiso => Set<SolicitudPermiso>();
 
     public DbSet<PermisoOtorgado> PermisosOtorgados => Set<PermisoOtorgado>();
+
+    public DbSet<Documento> Documentos => Set<Documento>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -94,6 +97,15 @@ public class CoreDbContext : DbContext
             permiso.HasOne(p => p.Usuario).WithMany().HasForeignKey(p => p.UsuarioId);
             permiso.HasOne(p => p.Solicitud).WithMany().HasForeignKey(p => p.SolicitudId);
             permiso.HasIndex(p => new { p.UsuarioId, p.Permiso }).IsUnique(); // Cada permiso, una sola vez.
+        });
+
+        modelBuilder.Entity<Documento>(documento =>
+        {
+            documento.Property(d => d.Nombre).HasMaxLength(Documento.LargoMaximoNombre).IsRequired();
+            documento.Property(d => d.Tipo).HasMaxLength(Documento.LargoMaximoTipo).IsRequired();
+            documento.Property(d => d.NombreArchivo).HasMaxLength(32).IsRequired();
+            documento.HasOne(d => d.SubidoPor).WithMany().HasForeignKey(d => d.SubidoPorUsuarioId);
+            documento.HasIndex(d => d.SubidoPorUsuarioId);
         });
     }
 }
