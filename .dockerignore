@@ -1,0 +1,30 @@
+# Lo que nunca entra a la imagen.
+
+# Historial de git y configuración del repositorio
+.git
+.gitignore
+.github
+
+# Secretos: el .env llega al contenedor como variables de entorno, nunca copiado (RD-10)
+.env
+.env.*
+
+# Carpetas de compilación y dependencias restauradas
+**/bin/
+**/obj/
+
+# Datos locales: las bases y los documentos viven en volúmenes
+datos/
+*.db
+*.db-shm
+*.db-wal
+
+# Pruebas, documentación y archivos del editor que la aplicación no necesita
+tests/
+pruebas/
+docs/
+*.md
+.vs/
+.vscode/
+.idea/
+.DS_Store
