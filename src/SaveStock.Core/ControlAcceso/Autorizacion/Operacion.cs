@@ -44,4 +44,11 @@ public enum Operacion
     EnviarOrdenDeCompra,
     RecibirOrdenDeCompra,
     CancelarOrdenDeCompra,
+
+    // Documentos (#52)
+    SubirDocumento,
+    ListarDocumentos,
+    ConsultarDocumento,
+    DescargarDocumento,
+    EliminarDocumento,
 }
