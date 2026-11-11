@@ -18,6 +18,7 @@ public sealed class InventarioConGestionPermisosTests : IDisposable
     private readonly BaseDatosEnMemoria _bd = new();
     private readonly SqliteConnection _conexionInventario = new("Data Source=:memory:");
     private readonly RelojFalso _reloj = new();
+    private readonly TasaDeCambioFalsa _tasa = new();
 
     public InventarioConGestionPermisosTests()
     {
@@ -37,7 +38,7 @@ public sealed class InventarioConGestionPermisosTests : IDisposable
 
     private ServicioGestionPermisos GestionPermisos() => new(_bd.CrearContexto(), _reloj);
 
-    private ServicioOrdenesCompra Ordenes() => new(CrearInventario(), GestionPermisos(), _reloj);
+    private ServicioOrdenesCompra Ordenes() => new(CrearInventario(), GestionPermisos(), _reloj, _tasa);
 
     private async Task<int> CrearOrdenEnviadaAsync(Usuario usuario)
     {

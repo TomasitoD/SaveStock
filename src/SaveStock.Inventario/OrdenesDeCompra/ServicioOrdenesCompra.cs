@@ -3,6 +3,7 @@ using SaveStock.Core.Comun;
 using SaveStock.Core.ControlAcceso.Entidades;
 using SaveStock.Core.GestionPermisos;
 using SaveStock.Inventario.Datos;
+using SaveStock.Inventario.TasaDeCambio;
 
 namespace SaveStock.Inventario.OrdenesDeCompra;
 
@@ -15,6 +16,9 @@ public record OrdenDeCompraRespuesta(
     DateTime FechaCreacion,
     DateTime FechaActualizacion,
     decimal MontoDop);
+
+/// <summary>Total de una orden convertido a dólares con la tasa del día.</summary>
+public record TotalEnDolaresRespuesta(int OrdenId, decimal MontoDop, decimal PesosPorDolar, decimal MontoUsd, string FechaTasa);
 
 /// <summary>
 /// Operaciones de las órdenes de compra (RF-NEG-02). Los cambios de estado los decide solo
@@ -30,12 +34,14 @@ public class ServicioOrdenesCompra
     private readonly InventarioDbContext _db;
     private readonly ServicioGestionPermisos _gestionPermisos;
     private readonly IReloj _reloj;
+    private readonly ITasaDeCambio _tasaDeCambio;
 
-    public ServicioOrdenesCompra(InventarioDbContext db, ServicioGestionPermisos gestionPermisos, IReloj reloj)
+    public ServicioOrdenesCompra(InventarioDbContext db, ServicioGestionPermisos gestionPermisos, IReloj reloj, ITasaDeCambio tasaDeCambio)
     {
         _db = db;
         _gestionPermisos = gestionPermisos;
         _reloj = reloj;
+        _tasaDeCambio = tasaDeCambio;
     }
 
     /// <summary>
@@ -89,6 +95,30 @@ public class ServicioOrdenesCompra
         return orden is null
             ? Resultado<OrdenDeCompraRespuesta>.Error(TipoError.NoEncontrado, MensajeOrdenNoExiste)
             : Resultado<OrdenDeCompraRespuesta>.Ok(ARespuesta(orden));
+    }
+
+    /// <summary>
+    /// Convierte el monto en pesos de la orden a dólares con la tasa de ExchangeRate-API.
+    /// Solo lee la orden: si la API falla, devuelve su rechazo (RD-07, RD-08) y la orden no cambia.
+    /// </summary>
+    public async Task<Resultado<TotalEnDolaresRespuesta>> TotalEnDolaresAsync(Usuario usuario, int idOrden)
+    {
+        var orden = await BuscarVisibleAsync(usuario, idOrden);
+        if (orden is null)
+        {
+            return Resultado<TotalEnDolaresRespuesta>.Error(TipoError.NoEncontrado, MensajeOrdenNoExiste);
+        }
+
+        var tasa = await _tasaDeCambio.ObtenerUsdDopAsync();
+        if (!tasa.Exito)
+        {
+            return Resultado<TotalEnDolaresRespuesta>.Error(tasa.TipoError, tasa.Mensaje);
+        }
+
+        var pesosPorDolar = tasa.Valor!.PesosPorDolar;
+        var montoUsd = Math.Round(orden.MontoDop / pesosPorDolar, 2);
+        return Resultado<TotalEnDolaresRespuesta>.Ok(
+            new TotalEnDolaresRespuesta(orden.Id, orden.MontoDop, pesosPorDolar, montoUsd, tasa.Valor.FechaActualizacion));
     }
 
     public async Task<Resultado<OrdenDeCompraRespuesta>> EnviarAsync(Usuario usuario, int idOrden)

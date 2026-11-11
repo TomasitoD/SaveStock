@@ -29,6 +29,15 @@ public static class OrdenesDeCompraEndpoints
                 Responder(await servicio.ConsultarAsync(http.ObtenerUsuarioActual(), id)))
             .RequiereOperacion(Operacion.ConsultarOrdenDeCompra);
 
+        // Usa la API externa de tasa de cambio: si falla responde 503 con un mensaje claro,
+        // y las demás rutas de órdenes siguen funcionando igual.
+        app.MapGet("/api/ordenes/{id:int}/total-usd", async (int id, HttpContext http, ServicioOrdenesCompra servicio) =>
+            {
+                var resultado = await servicio.TotalEnDolaresAsync(http.ObtenerUsuarioActual(), id);
+                return resultado.Exito ? Results.Ok(resultado.Valor) : ResultadoHttp.Error(resultado);
+            })
+            .RequiereOperacion(Operacion.ConsultarTotalEnDolares);
+
         app.MapPost("/api/ordenes/{id:int}/enviar", async (int id, HttpContext http, ServicioOrdenesCompra servicio) =>
                 Responder(await servicio.EnviarAsync(http.ObtenerUsuarioActual(), id)))
             .RequiereOperacion(Operacion.EnviarOrdenDeCompra);
