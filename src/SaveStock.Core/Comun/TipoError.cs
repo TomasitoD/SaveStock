@@ -25,4 +25,7 @@ public enum TipoError
 
     /// <summary>La cuenta está bloqueada temporalmente por intentos fallidos → 423 (RF-CA-19).</summary>
     Bloqueado,
+
+    /// <summary>Un servicio externo (por ejemplo, la API de tasa de cambio) no está disponible o rechazó la consulta → 503.</summary>
+    ServicioExterno,
 }

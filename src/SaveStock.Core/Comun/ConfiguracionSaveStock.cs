@@ -36,6 +36,9 @@ public class ConfiguracionSaveStock
     public string? SmtpContrasena { get; init; }
     public string? SmtpRemitente { get; init; }
 
+    /// <summary>Clave de ExchangeRate-API para consultar la tasa USD/DOP. Si falta, esa consulta se rechaza.</summary>
+    public string? ExchangeApiKey { get; init; }
+
     public string CadenaConexion => $"Data Source={RutaBaseDatos}";
 
     public string CadenaConexionInventario => $"Data Source={RutaBaseDatosInventario}";
@@ -61,6 +64,7 @@ public class ConfiguracionSaveStock
             SmtpUsuario = Leer("SMTP_USUARIO"),
             SmtpContrasena = Leer("SMTP_CONTRASENA"),
             SmtpRemitente = Leer("SMTP_REMITENTE"),
+            ExchangeApiKey = Leer("EXCHANGE_API_KEY"),
         };
     }
 
