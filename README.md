@@ -19,11 +19,136 @@ La **Práctica 3** pone a funcionar el **módulo de inventario**: las órdenes d
 consultan, se envían, se reciben y se cancelan (ver la [sección 9](#9-órdenes-de-compra-rf-neg-02-a-rf-neg-06-rf-neg-09-rd-04-rd-07-rd-09)).
 Un Estándar solo puede recibir una orden si un Administrador le aprobó el permiso.
 
+La **Práctica 4** agrega la tercera pieza del Core, el **manejador de documentos** (subir, listar,
+descargar y eliminar de forma lógica, ver la [sección 10](#10-documentos-rf-doc-01-a-rf-doc-05-rd-06-rd-07)),
+empaqueta todo para que levante con **un solo comando de Docker** (ver [Contenedor](#contenedor)) e
+integra una **API externa** de tasa de cambio para calcular el total en dólares de una orden (ver
+[API externa](#api-externa)).
+
 Todos los comandos de este README se ejecutan **desde la raíz del repositorio**.
+
+## Contenedor
+
+La forma recomendada de correr SaveStock: solo hace falta [Docker](https://docs.docker.com/get-docker/)
+(Docker Desktop, OrbStack o Docker Engine con el plugin `compose`). No hay que instalar .NET ni crear
+ninguna base a mano.
+
+```bash
+git clone https://github.com/TomasitoD/SaveStock.git
+cd SaveStock
+git checkout practica-4
+cp .env.example .env
+docker compose up --build
+```
+
+La aplicación responde en **<http://localhost:5080>** (documentación de la API en
+<http://localhost:5080/scalar>). Para comprobarlo, en otra terminal:
+
+```bash
+curl http://localhost:5080/api/salud
+```
+
+`{"estado":"ok"}`. La primera construcción tarda unos minutos porque descarga las imágenes de .NET.
+
+**Detener el proyecto:** `Ctrl+C` en la terminal donde corre, o desde otra terminal en la raíz:
+
+```bash
+docker compose down
+```
+
+`docker compose down` **sin `-v`** conserva los datos. Con `-v` se borran los volúmenes y se empieza de
+cero.
+
+**Qué levanta `docker-compose.yml`:**
+
+| Pieza | Qué es |
+|---|---|
+| Servicio `web` | La aplicación (API, páginas y documentación). Es el único que publica un puerto: `5080`. |
+| Servicio `enviador` | El enviador de correos. No arranca con `up`: se ejecuta cuando hace falta con `docker compose run --rm enviador`, procesa la cola y termina. |
+| Volumen `datos` | Las bases SQLite (`savestock.db` y `inventario.db`): usuarios, sesiones, solicitudes, órdenes y registros de documentos (RD-09). |
+| Volumen `documentos` | Los archivos de los documentos subidos, fuera de la imagen (RF-DOC-05). |
+
+No hay un motor de base de datos aparte: SQLite es un archivo y vive en el volumen `datos`. Las
+variables llegan desde el `.env` (que no se versiona); `docker-compose.yml` solo fija las rutas de los
+volúmenes dentro del contenedor.
+
+**Con los valores de `.env.example`:** el administrador inicial es `admin@example.com` con contraseña
+`Admin12345`; el servidor SMTP es de ejemplo, así que el enviador deja los correos `Pendiente` y los
+enlaces se leen de la cola (como en el resto de este README); y la clave de la API externa es de
+ejemplo, así que el total en dólares responde un rechazo controlado (ver [API externa](#api-externa)).
+
+**Seguir las secciones "Cómo verificar" con el contenedor.** Esas secciones están escritas para
+`dotnet run`. Con el contenedor funcionan igual con dos cambios:
+
+1. Las consultas `sqlite3 datos/...` se hacen dentro del contenedor. Define una vez esta función en la
+   terminal donde vas a probar (bash o zsh), y todos los comandos `sqlite3` del README funcionan tal
+   como están escritos:
+
+   ```bash
+   sqlite3() { docker compose exec -T web sqlite3 "$@"; }
+   ```
+
+2. Donde diga `dotnet run --project src/SaveStock.Enviador`, ejecuta `docker compose run --rm enviador`.
+   En la Preparación, `ADMIN_CORREO=admin@example.com` y `ADMIN_CONTRASENA=Admin12345`.
+
+**Los datos sobreviven a destruir el contenedor (RF-DOC-05, RD-09).** Después de subir un documento
+(sección 10):
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+El documento sigue en `GET /api/documentos`, se descarga, y el usuario registrado inicia sesión. Los
+volúmenes se ven con `docker volume ls` (`<carpeta>_datos` y `<carpeta>_documentos`).
+
+## API externa
+
+SaveStock usa **[ExchangeRate-API](https://www.exchangerate-api.com)** para saber cuántos pesos
+dominicanos vale un dólar hoy.
+
+- **Operación que la usa:** `GET /api/ordenes/{id}/total-usd`. Toma el monto en pesos de una orden de
+  compra (`montoDop`, se indica al crearla) y devuelve su total en dólares con la tasa del día. Es una
+  operación del módulo de inventario: la tasa no se reenvía tal cual, se usa para calcular el total.
+- **Variable:** `EXCHANGE_API_KEY` (RD-10). Se lee del entorno; llega al contenedor desde el `.env`, que
+  no se versiona. La clave no está en el código, en el `Dockerfile`, en `docker-compose.yml`, en la
+  imagen ni en el historial. Una clave gratis se obtiene en <https://www.exchangerate-api.com> con un
+  correo.
+- **Dónde está:** `src/SaveStock.Inventario/TasaDeCambio/ClienteExchangeRateApi.cs` (la llamada) y
+  `ServicioOrdenesCompra.TotalEnDolaresAsync` (el cálculo).
+
+**Probarlo.** Con la sesión del administrador inicial (los valores de `.env.example`):
+
+```bash
+API=http://localhost:5080
+TOKEN=$(curl -s -X POST "$API/api/sesion/iniciar" -H 'Content-Type: application/json' \
+  -d '{"correo":"admin@example.com","contrasena":"Admin12345"}' | jq -r .token)
+ORDEN=$(curl -s -X POST "$API/api/ordenes" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"proveedor":"Distribuidora Central","montoDop":15000}' | jq .id)
+curl -s -w ' -> %{http_code}\n' "$API/api/ordenes/$ORDEN/total-usd" -H "Authorization: Bearer $TOKEN"
+```
+
+Con una clave real en el `.env`, esta es la respuesta real que se obtuvo el 10 de noviembre de 2026
+(15 000 pesos ÷ 60.7489 pesos por dólar = 246.92 dólares; la clave no aparece en ella):
+
+```json
+{"ordenId":2,"montoDop":15000.0,"pesosPorDolar":60.7489,"montoUsd":246.92,"fechaTasa":"Wed, 11 Nov 2026 00:00:02 +0000"} -> 200
+```
+
+**Rechazos controlados (RD-07, RD-08).** Si la API no se puede usar, la operación responde `503` con un
+mensaje comprensible y el resto del sistema sigue funcionando (la orden se puede consultar, enviar,
+etc.):
+
+| Situación | Respuesta |
+|---|---|
+| Con la clave de ejemplo de `.env.example` | `{"mensaje":"El servicio de tasa de cambio rechazó la clave configurada en EXCHANGE_API_KEY."} -> 503` |
+| `EXCHANGE_API_KEY` vacía o sin definir | `{"mensaje":"La consulta de la tasa de cambio no está configurada: falta la variable EXCHANGE_API_KEY."} -> 503` |
+| La API no responde (sin red, caída o lenta: espera 10 segundos) | `{"mensaje":"El servicio de tasa de cambio no responde. Intenta más tarde."} -> 503` |
 
 ## Requisitos
 
-- [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0) (`dotnet --version` debe mostrar `10.x`).
+- Con Docker (recomendado): solo Docker, ver [Contenedor](#contenedor).
+- Sin Docker: [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0) (`dotnet --version` debe mostrar `10.x`).
 - `curl`, para las verificaciones de abajo.
 - Opcionales: `sqlite3`, para leer la base de datos (viene instalado en macOS y en casi todas las
   distribuciones de Linux), y `jq`, para sacar el token de las respuestas JSON (cada comando que lo usa
@@ -36,7 +161,7 @@ Los comandos están escritos para bash o zsh (macOS, Linux, o Git Bash / WSL en 
 ```bash
 git clone https://github.com/TomasitoD/SaveStock.git
 cd SaveStock
-git checkout practica-3
+git checkout practica-4
 dotnet restore
 ```
 
@@ -60,6 +185,7 @@ credencial. Hay dos formas de darlas:
 |---|---|---|
 | `SAVESTOCK_DB_RUTA` | Archivo SQLite del Core (usuarios, sesiones, tokens, cola de correos). La web y el enviador usan el mismo. Si está vacía: `datos/savestock.db`. | No |
 | `SAVESTOCK_INVENTARIO_DB_RUTA` | Archivo SQLite del inventario (órdenes de compra). Si está vacía: `datos/inventario.db`. | No |
+| `SAVESTOCK_DOCUMENTOS_RUTA` | Carpeta de los archivos de los documentos. Si está vacía: `datos/documentos`. | No |
 | `SAVESTOCK_URL_BASE` | URL pública de la web, con la que se arman los enlaces de los correos. Si está vacía: `http://localhost:5080`. | No |
 | `SAVESTOCK_ADMIN_CORREO` | Correo del administrador inicial. Se crea activado al iniciar la web si todavía no existe. | Sí, para tener un Administrador |
 | `SAVESTOCK_ADMIN_CONTRASENA` | Contraseña del administrador inicial (al menos 8 caracteres, con letras y números). | Sí, para tener un Administrador |
@@ -69,6 +195,7 @@ credencial. Hay dos formas de darlas:
 | `SMTP_USUARIO` | Usuario con el que el enviador se autentica en el servidor SMTP. | Sí, para el enviador |
 | `SMTP_CONTRASENA` | Contraseña del usuario SMTP. | Sí, para el enviador |
 | `SMTP_REMITENTE` | Dirección que aparece como remitente de los correos. | Sí, para el enviador |
+| `EXCHANGE_API_KEY` | Clave de ExchangeRate-API para el total en dólares de una orden (ver [API externa](#api-externa)). | Solo para esa operación |
 
 Si falta alguna de las tres `SAVESTOCK_ADMIN_*`, no se crea el administrador inicial. Las variables
 `SMTP_*` solo las lee el enviador: la web nunca se conecta al servidor de correo.
@@ -1059,6 +1186,89 @@ después `Aprobar -> 200`, `"estado":"Recibida"` con `200`, y por último un `40
 sqlite3 datos/inventario.db "select Id, Proveedor, Estado from OrdenesDeCompra;"
 ```
 
+### 10. Documentos (RF-DOC-01 a RF-DOC-05, RD-06, RD-07)
+
+Todas las operaciones exigen sesión. Se usan dos usuarios Estándar nuevos: `DUENA` (sube el documento)
+y `OTRO` (no es el dueño). Si vienes de una práctica anterior **sin Docker**, borra antes `datos/`
+(`rm -rf datos`): las bases se crean una sola vez y la vieja no tiene la tabla `Documentos`.
+
+**Preparar los dos usuarios** (se registran y se activan con el enlace leído de la cola):
+
+```bash
+API=http://localhost:5080
+for NOMBRE in duena otro; do
+  curl -s -o /dev/null -X POST "$API/api/cuentas/registro" -H 'Content-Type: application/json' \
+    -d "{\"nombre\":\"$NOMBRE\",\"correo\":\"$NOMBRE@example.com\",\"contrasena\":\"clave1234\"}"
+  ENLACE=$(sqlite3 datos/savestock.db "select Cuerpo from CorreosEnCola where Destinatario='$NOMBRE@example.com' order by Id desc limit 1;" | grep -o 'http[^ ]*activar?token=[A-Za-z0-9_-]*')
+  curl -s -o /dev/null "$ENLACE"
+done
+DUENA=$(curl -s -X POST "$API/api/sesion/iniciar" -H 'Content-Type: application/json' \
+  -d '{"correo":"duena@example.com","contrasena":"clave1234"}' | jq -r .token)
+OTRO=$(curl -s -X POST "$API/api/sesion/iniciar" -H 'Content-Type: application/json' \
+  -d '{"correo":"otro@example.com","contrasena":"clave1234"}' | jq -r .token)
+```
+
+**10.1 Subir un documento (RF-DOC-01).** El archivo va en el campo `archivo` (multipart):
+
+```bash
+echo "Factura 001 de Distribuidora Central" > factura.txt
+DOC=$(curl -s -X POST "$API/api/documentos" -H "Authorization: Bearer $DUENA" -F "archivo=@factura.txt;type=text/plain" | tee /dev/stderr | jq .id)
+```
+
+`{"id":1,"nombre":"factura.txt","tipo":"text/plain","tamanoBytes":37,"fechaSubida":"...","subidoPorUsuarioId":2,"subidoPorCorreo":"..."}`
+(201). El registro se consulta con todos esos datos:
+
+```bash
+curl -s -w ' -> %{http_code}\n' "$API/api/documentos/$DOC" -H "Authorization: Bearer $DUENA"
+```
+
+**10.2 Sin sesión, o sin archivo (RD-07).**
+
+```bash
+curl -s -w ' -> %{http_code}\n' "$API/api/documentos"
+: > vacio.txt
+curl -s -w ' -> %{http_code}\n' -X POST "$API/api/documentos" -H "Authorization: Bearer $DUENA" -F "archivo=@vacio.txt"
+```
+
+`{"mensaje":"Necesitas iniciar sesión."} -> 401` y
+`{"mensaje":"Adjunta un archivo con contenido en el campo «archivo»."} -> 400`.
+
+**10.3 Listar (RF-DOC-02).** El dueño lo ve; el otro Estándar recibe `[]`; el administrador ve los de
+todos:
+
+```bash
+curl -s "$API/api/documentos" -H "Authorization: Bearer $DUENA"; echo
+curl -s "$API/api/documentos" -H "Authorization: Bearer $OTRO"; echo
+```
+
+**10.4 Descargar (RF-DOC-03, RD-06).** El dueño recibe el contenido; el otro usuario, un rechazo,
+aunque llame a la API directamente:
+
+```bash
+curl -s -w ' -> %{http_code}\n' "$API/api/documentos/$DOC/descargar" -H "Authorization: Bearer $DUENA"
+curl -s -w ' -> %{http_code}\n' "$API/api/documentos/$DOC/descargar" -H "Authorization: Bearer $OTRO"
+```
+
+`Factura 001 de Distribuidora Central -> 200` y
+`{"mensaje":"Solo quien subió el documento o un Administrador puede hacer esto."} -> 403`.
+
+**10.5 Eliminar de forma lógica (RF-DOC-04).** El otro usuario es rechazado; el dueño lo elimina, deja
+de listarse, pero el registro sigue en la base con `Eliminado = 1`:
+
+```bash
+curl -s -w ' -> %{http_code}\n' -X DELETE "$API/api/documentos/$DOC" -H "Authorization: Bearer $OTRO"
+curl -s -w ' -> %{http_code}\n' -X DELETE "$API/api/documentos/$DOC" -H "Authorization: Bearer $DUENA"
+curl -s "$API/api/documentos" -H "Authorization: Bearer $DUENA"; echo
+sqlite3 datos/savestock.db "select Id, Nombre, Eliminado, FechaEliminacion from Documentos;"
+```
+
+`403`, luego `{"mensaje":"El documento fue eliminado."} -> 200`, el listado `[]` y la fila
+`1|factura.txt|1|<fecha>`. El archivo tampoco se borra del volumen.
+
+**10.6 Sobreviven a destruir el contenedor (RF-DOC-05).** Sube otro documento, ejecuta
+`docker compose down` y `docker compose up -d` (ver [Contenedor](#contenedor)): sigue en el listado, se
+descarga, y `duena@example.com` inicia sesión.
+
 ## Dónde está cada cosa
 
 | Requisito | Archivo |
@@ -1085,6 +1295,11 @@ sqlite3 datos/inventario.db "select Id, Proveedor, Estado from OrdenesDeCompra;"
 | RF-GP-05 (el permiso aprobado habilita la operación) | `Permisos.OperacionesPorPermiso` en `Permisos.cs` y `Autorizador.cs` |
 | Endpoints de gestión de permisos | `src/SaveStock.Web/Endpoints/GestionPermisosEndpoints.cs` |
 | RD-12 (pruebas sin levantar la aplicación) | `tests/SaveStock.Tests/Unitarias/` (Gestión de permisos en `Unitarias/GestionPermisos/`) |
+| RF-DOC-01 a RF-DOC-04 (subir, listar, descargar, eliminación lógica) | `src/SaveStock.Core/Documentos/ServicioDocumentos.cs` |
+| Endpoints de documentos | `src/SaveStock.Web/Endpoints/DocumentosEndpoints.cs` |
+| Órdenes de compra (RF-NEG-02 a RF-NEG-06) | `src/SaveStock.Inventario/OrdenesDeCompra/ServicioOrdenesCompra.cs` |
+| API externa (tasa de cambio, RD-10) | `src/SaveStock.Inventario/TasaDeCambio/ClienteExchangeRateApi.cs` |
+| RF-DOC-05, RD-09 (contenedor y volúmenes) | `Dockerfile`, `docker-compose.yml`, `.dockerignore` |
 | Endpoints (solo traducen HTTP, RD-02) | `src/SaveStock.Web/Endpoints/` |
 
 ## Estructura del proyecto
@@ -1104,16 +1319,25 @@ responsabilidad (RD-01) y la dependencia va en un solo sentido: el Core no refer
 ```text
 SaveStock.slnx
 Directory.Build.props      configuración común (net10.0, versión)
-.env.example               nombres de las variables de entorno, sin valores
+Dockerfile                 imagen de la web y el enviador
+docker-compose.yml         servicios y volúmenes
+.env.example               variables de entorno con valores de ejemplo
 docs/                      maquina-de-estados.md, gestion-de-permisos.md
-src/SaveStock.Core/        Comun/, ControlAcceso/, Correo/, Datos/, GestionPermisos/
-src/SaveStock.Inventario/  OrdenesDeCompra/, Datos/
+src/SaveStock.Core/        Comun/, ControlAcceso/, Correo/, Datos/, Documentos/, GestionPermisos/
+src/SaveStock.Inventario/  OrdenesDeCompra/, TasaDeCambio/, Datos/
 src/SaveStock.Web/         Endpoints/, Filtros/, Errores/, Pages/
 src/SaveStock.Enviador/
 tests/SaveStock.Tests/     Unitarias/, Integracion/, Apoyo/
 ```
 
 ## Entrega
+
+La Práctica 4 se entrega en la etiqueta `practica-4` (versión `4.0.0`). Se arranca como dice
+[Contenedor](#contenedor):
+
+```bash
+git checkout practica-4
+```
 
 La Práctica 3 se entrega en la etiqueta `practica-3` (versión `3.0.0`). Los cuatro defectos plantados
 están en `practica-3-defecto-1` a `practica-3-defecto-4`:
