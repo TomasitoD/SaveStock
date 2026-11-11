@@ -16,6 +16,7 @@ public static class ResultadoHttp
         TipoError.NoEncontrado => StatusCodes.Status404NotFound,
         TipoError.Conflicto => StatusCodes.Status409Conflict,
         TipoError.Bloqueado => StatusCodes.Status423Locked,
+        TipoError.ServicioExterno => StatusCodes.Status503ServiceUnavailable,
         _ => StatusCodes.Status500InternalServerError,
     };
 

@@ -3,6 +3,7 @@ using SaveStock.Core.Comun;
 using SaveStock.Core.ControlAcceso.Entidades;
 using SaveStock.Core.GestionPermisos;
 using SaveStock.Inventario.Datos;
+using SaveStock.Inventario.TasaDeCambio;
 
 namespace SaveStock.Inventario.OrdenesDeCompra;
 
@@ -13,7 +14,11 @@ public record OrdenDeCompraRespuesta(
     EstadoOrdenCompra Estado,
     int CreadaPorUsuarioId,
     DateTime FechaCreacion,
-    DateTime FechaActualizacion);
+    DateTime FechaActualizacion,
+    decimal MontoDop);
+
+/// <summary>Total de una orden convertido a dólares con la tasa del día.</summary>
+public record TotalEnDolaresRespuesta(int OrdenId, decimal MontoDop, decimal PesosPorDolar, decimal MontoUsd, string FechaTasa);
 
 /// <summary>
 /// Operaciones de las órdenes de compra (RF-NEG-02). Los cambios de estado los decide solo
@@ -23,21 +28,27 @@ public record OrdenDeCompraRespuesta(
 public class ServicioOrdenesCompra
 {
     public const string MensajeOrdenNoExiste = "No existe una orden de compra con ese id.";
+    public const string MensajeMontoNegativo = "El monto no puede ser negativo.";
     public const string MensajeNecesitaPermiso = "Necesitas el permiso RecibirOrdenesDeCompra aprobado para recibir órdenes.";
 
     private readonly InventarioDbContext _db;
     private readonly ServicioGestionPermisos _gestionPermisos;
     private readonly IReloj _reloj;
+    private readonly ITasaDeCambio _tasaDeCambio;
 
-    public ServicioOrdenesCompra(InventarioDbContext db, ServicioGestionPermisos gestionPermisos, IReloj reloj)
+    public ServicioOrdenesCompra(InventarioDbContext db, ServicioGestionPermisos gestionPermisos, IReloj reloj, ITasaDeCambio tasaDeCambio)
     {
         _db = db;
         _gestionPermisos = gestionPermisos;
         _reloj = reloj;
+        _tasaDeCambio = tasaDeCambio;
     }
 
-    /// <summary>Crea una orden en Borrador. El proveedor es obligatorio (RD-07).</summary>
-    public async Task<Resultado<OrdenDeCompraRespuesta>> CrearAsync(Usuario usuario, string? proveedor)
+    /// <summary>
+    /// Crea una orden en Borrador. El proveedor es obligatorio; el monto en pesos es opcional
+    /// (si no se envía queda en 0) y no puede ser negativo (RD-07).
+    /// </summary>
+    public async Task<Resultado<OrdenDeCompraRespuesta>> CrearAsync(Usuario usuario, string? proveedor, decimal? montoDop = null)
     {
         var validacion = ValidadorEntrada.ValidarTextoObligatorio(proveedor, "proveedor", OrdenDeCompra.LargoMaximoProveedor);
         if (!validacion.Exito)
@@ -45,10 +56,17 @@ public class ServicioOrdenesCompra
             return Resultado<OrdenDeCompraRespuesta>.Error(validacion.TipoError, validacion.Mensaje);
         }
 
+        var monto = montoDop ?? 0m;
+        if (monto < 0)
+        {
+            return Resultado<OrdenDeCompraRespuesta>.Error(TipoError.Validacion, MensajeMontoNegativo);
+        }
+
         var ahora = _reloj.AhoraUtc;
         var orden = new OrdenDeCompra
         {
             Proveedor = proveedor!.Trim(),
+            MontoDop = monto,
             CreadaPorUsuarioId = usuario.Id,
             FechaCreacion = ahora,
             FechaActualizacion = ahora,
@@ -77,6 +95,30 @@ public class ServicioOrdenesCompra
         return orden is null
             ? Resultado<OrdenDeCompraRespuesta>.Error(TipoError.NoEncontrado, MensajeOrdenNoExiste)
             : Resultado<OrdenDeCompraRespuesta>.Ok(ARespuesta(orden));
+    }
+
+    /// <summary>
+    /// Convierte el monto en pesos de la orden a dólares con la tasa de ExchangeRate-API.
+    /// Solo lee la orden: si la API falla, devuelve su rechazo (RD-07, RD-08) y la orden no cambia.
+    /// </summary>
+    public async Task<Resultado<TotalEnDolaresRespuesta>> TotalEnDolaresAsync(Usuario usuario, int idOrden)
+    {
+        var orden = await BuscarVisibleAsync(usuario, idOrden);
+        if (orden is null)
+        {
+            return Resultado<TotalEnDolaresRespuesta>.Error(TipoError.NoEncontrado, MensajeOrdenNoExiste);
+        }
+
+        var tasa = await _tasaDeCambio.ObtenerUsdDopAsync();
+        if (!tasa.Exito)
+        {
+            return Resultado<TotalEnDolaresRespuesta>.Error(tasa.TipoError, tasa.Mensaje);
+        }
+
+        var pesosPorDolar = tasa.Valor!.PesosPorDolar;
+        var montoUsd = Math.Round(orden.MontoDop / pesosPorDolar, 2);
+        return Resultado<TotalEnDolaresRespuesta>.Ok(
+            new TotalEnDolaresRespuesta(orden.Id, orden.MontoDop, pesosPorDolar, montoUsd, tasa.Valor.FechaActualizacion));
     }
 
     public async Task<Resultado<OrdenDeCompraRespuesta>> EnviarAsync(Usuario usuario, int idOrden)
@@ -137,5 +179,5 @@ public class ServicioOrdenesCompra
     }
 
     private static OrdenDeCompraRespuesta ARespuesta(OrdenDeCompra orden) => new(
-        orden.Id, orden.Proveedor, orden.Estado, orden.CreadaPorUsuarioId, orden.FechaCreacion, orden.FechaActualizacion);
+        orden.Id, orden.Proveedor, orden.Estado, orden.CreadaPorUsuarioId, orden.FechaCreacion, orden.FechaActualizacion, orden.MontoDop);
 }

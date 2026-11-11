@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SaveStock.Core.Comun;
 using SaveStock.Inventario.Datos;
 using SaveStock.Inventario.OrdenesDeCompra;
+using SaveStock.Inventario.TasaDeCambio;
 
 namespace SaveStock.Inventario;
 
@@ -23,6 +24,12 @@ public static class InventarioModulo
         services.AddHostedService<InicializadorInventario>();
 
         services.AddScoped<ServicioOrdenesCompra>();
+
+        // Cliente de ExchangeRate-API. El timeout evita que una API lenta deje colgada la petición.
+        // RemoveAllLoggers: el registro automático de HttpClient escribe la URL de cada petición,
+        // y en esta API la clave va dentro de la URL (RD-10).
+        services.AddHttpClient<ITasaDeCambio, ClienteExchangeRateApi>(cliente => cliente.Timeout = TimeSpan.FromSeconds(10))
+            .RemoveAllLoggers();
 
         // La máquina de estados (OrdenesDeCompra/MaquinaEstadosOrdenCompra) es una clase estática,
         // como Permisos en el Core: no hace falta registrarla.

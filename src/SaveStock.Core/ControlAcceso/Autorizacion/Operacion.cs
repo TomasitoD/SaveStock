@@ -44,6 +44,7 @@ public enum Operacion
     EnviarOrdenDeCompra,
     RecibirOrdenDeCompra,
     CancelarOrdenDeCompra,
+    ConsultarTotalEnDolares,
 
     // Documentos (#52)
     SubirDocumento,

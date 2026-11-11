@@ -33,6 +33,7 @@ public static class Permisos
         [Operacion.EnviarOrdenDeCompra] = NivelAcceso.Autenticado,
         [Operacion.RecibirOrdenDeCompra] = NivelAcceso.Autenticado,
         [Operacion.CancelarOrdenDeCompra] = NivelAcceso.Autenticado,
+        [Operacion.ConsultarTotalEnDolares] = NivelAcceso.Autenticado,
 
         // Documentos: exigen sesión; que sea el dueño o un Administrador lo verifica ServicioDocumentos (RF-DOC-03).
         [Operacion.SubirDocumento] = NivelAcceso.Autenticado,
