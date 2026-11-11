@@ -7,7 +7,7 @@ using SaveStock.Web.Filtros;
 namespace SaveStock.Web.Endpoints;
 
 /// <summary>Cuerpo de POST /api/ordenes.</summary>
-public record CuerpoOrdenDeCompra(string? Proveedor);
+public record CuerpoOrdenDeCompra(string? Proveedor, decimal? MontoDop);
 
 public static class OrdenesDeCompraEndpoints
 {
@@ -18,7 +18,7 @@ public static class OrdenesDeCompraEndpoints
     public static IEndpointRouteBuilder MapOrdenesDeCompraEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/ordenes", async (CuerpoOrdenDeCompra? cuerpo, HttpContext http, ServicioOrdenesCompra servicio) =>
-                Responder(await servicio.CrearAsync(http.ObtenerUsuarioActual(), cuerpo?.Proveedor), StatusCodes.Status201Created))
+                Responder(await servicio.CrearAsync(http.ObtenerUsuarioActual(), cuerpo?.Proveedor, cuerpo?.MontoDop), StatusCodes.Status201Created))
             .RequiereOperacion(Operacion.CrearOrdenDeCompra);
 
         app.MapGet("/api/ordenes", async (HttpContext http, ServicioOrdenesCompra servicio) =>

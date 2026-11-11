@@ -13,7 +13,8 @@ public record OrdenDeCompraRespuesta(
     EstadoOrdenCompra Estado,
     int CreadaPorUsuarioId,
     DateTime FechaCreacion,
-    DateTime FechaActualizacion);
+    DateTime FechaActualizacion,
+    decimal MontoDop);
 
 /// <summary>
 /// Operaciones de las órdenes de compra (RF-NEG-02). Los cambios de estado los decide solo
@@ -23,6 +24,7 @@ public record OrdenDeCompraRespuesta(
 public class ServicioOrdenesCompra
 {
     public const string MensajeOrdenNoExiste = "No existe una orden de compra con ese id.";
+    public const string MensajeMontoNegativo = "El monto no puede ser negativo.";
     public const string MensajeNecesitaPermiso = "Necesitas el permiso RecibirOrdenesDeCompra aprobado para recibir órdenes.";
 
     private readonly InventarioDbContext _db;
@@ -36,8 +38,11 @@ public class ServicioOrdenesCompra
         _reloj = reloj;
     }
 
-    /// <summary>Crea una orden en Borrador. El proveedor es obligatorio (RD-07).</summary>
-    public async Task<Resultado<OrdenDeCompraRespuesta>> CrearAsync(Usuario usuario, string? proveedor)
+    /// <summary>
+    /// Crea una orden en Borrador. El proveedor es obligatorio; el monto en pesos es opcional
+    /// (si no se envía queda en 0) y no puede ser negativo (RD-07).
+    /// </summary>
+    public async Task<Resultado<OrdenDeCompraRespuesta>> CrearAsync(Usuario usuario, string? proveedor, decimal? montoDop = null)
     {
         var validacion = ValidadorEntrada.ValidarTextoObligatorio(proveedor, "proveedor", OrdenDeCompra.LargoMaximoProveedor);
         if (!validacion.Exito)
@@ -45,10 +50,17 @@ public class ServicioOrdenesCompra
             return Resultado<OrdenDeCompraRespuesta>.Error(validacion.TipoError, validacion.Mensaje);
         }
 
+        var monto = montoDop ?? 0m;
+        if (monto < 0)
+        {
+            return Resultado<OrdenDeCompraRespuesta>.Error(TipoError.Validacion, MensajeMontoNegativo);
+        }
+
         var ahora = _reloj.AhoraUtc;
         var orden = new OrdenDeCompra
         {
             Proveedor = proveedor!.Trim(),
+            MontoDop = monto,
             CreadaPorUsuarioId = usuario.Id,
             FechaCreacion = ahora,
             FechaActualizacion = ahora,
@@ -137,5 +149,5 @@ public class ServicioOrdenesCompra
     }
 
     private static OrdenDeCompraRespuesta ARespuesta(OrdenDeCompra orden) => new(
-        orden.Id, orden.Proveedor, orden.Estado, orden.CreadaPorUsuarioId, orden.FechaCreacion, orden.FechaActualizacion);
+        orden.Id, orden.Proveedor, orden.Estado, orden.CreadaPorUsuarioId, orden.FechaCreacion, orden.FechaActualizacion, orden.MontoDop);
 }

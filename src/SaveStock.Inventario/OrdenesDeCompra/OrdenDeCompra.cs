@@ -13,6 +13,9 @@ public class OrdenDeCompra
     /// <summary>Nombre del proveedor al que se le hace el pedido. Obligatorio, hasta 200 caracteres.</summary>
     public string Proveedor { get; set; } = string.Empty;
 
+    /// <summary>Monto total de la orden en pesos dominicanos (DOP). Opcional al crear (0) y nunca negativo.</summary>
+    public decimal MontoDop { get; set; }
+
     /// <summary>
     /// Estado actual. Toda orden nace en Borrador. El setter es interno para que fuera del
     /// módulo nadie lo cambie sin pasar por la máquina de estados.
